@@ -149,3 +149,62 @@ func TestConfiguredSourcesOmitsUnregistered(t *testing.T) {
 		t.Fatalf("got %v, want [jellyfin]", got)
 	}
 }
+
+// baseConfig is the minimum a Server needs to start for enumeration tests.
+func baseConfig() Config {
+	return Config{
+		JellyfinURL:        "http://jellyfin.example",
+		JellyfinAPIKey:     "key",
+		Port:               "8080",
+		PublicURL:          "http://localhost:8080",
+		SessionTTL:         "4h",
+		StreamingProviders: defaultStreamingProviders,
+	}
+}
+
+// Without a TMDB read token the streaming sources must not be registered at
+// all, so they are never advertised to clients.
+func TestServerEnumeratesJellyfinOnlyWithoutTMDBToken(t *testing.T) {
+	cfg := baseConfig()
+	cfg.CacheDir = t.TempDir()
+
+	got := configuredSources(New(cfg).sources)
+
+	if len(got) != 1 || got[0] != SourceJellyfin {
+		t.Fatalf("got %v, want [jellyfin]", got)
+	}
+}
+
+// With a token, the resolved StreamingProviders list decides what is offered.
+func TestServerEnumeratesConfiguredProvidersWithTMDBToken(t *testing.T) {
+	cfg := baseConfig()
+	cfg.CacheDir = t.TempDir()
+	cfg.TMDBReadToken = "token"
+
+	got := configuredSources(New(cfg).sources)
+
+	want := []SourceID{SourceJellyfin, SourceNetflix, SourcePrime, SourceDisney}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+}
+
+// A narrowed STREAMING_PROVIDERS list removes the others from enumeration.
+func TestServerEnumerationHonoursStreamingProviders(t *testing.T) {
+	cfg := baseConfig()
+	cfg.CacheDir = t.TempDir()
+	cfg.TMDBReadToken = "token"
+	cfg.StreamingProviders = []SourceID{SourceDisney}
+
+	got := configuredSources(New(cfg).sources)
+
+	want := []SourceID{SourceJellyfin, SourceDisney}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

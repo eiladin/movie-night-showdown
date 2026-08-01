@@ -34,15 +34,17 @@ function sortGenres(genres: string[]): string[] {
     return [...genres].sort((a, b) => a.localeCompare(b))
 }
 
-// SELECTABLE_SOURCES is the fixed set a host can draw from. Streaming sources
-// are offered unconditionally; the server skips any that are not configured on
-// this deployment and reports them as unavailable at start.
-const SELECTABLE_SOURCES: { id: SourceID; label: string }[] = [
-    { id: 'jellyfin', label: 'Jellyfin' },
-    { id: 'netflix', label: 'Netflix' },
-    { id: 'prime', label: 'Prime Video' },
-    { id: 'disney', label: 'Disney+' },
-]
+// SOURCE_LABELS gives each source id its display name. Which sources are
+// actually offered is decided entirely by the server (the `sources` field of
+// GET /api/library/filters); this map only names them. Do not reintroduce a
+// client-side list of streaming sources: a deployment without a TMDB read
+// token must not render them at all.
+const SOURCE_LABELS: Record<SourceID, string> = {
+    jellyfin: 'Jellyfin',
+    netflix: 'Netflix',
+    prime: 'Prime Video',
+    disney: 'Disney+',
+}
 
 // HostSetup is the host's filter + library-preview page. The host arrives
 // here with a session already created (the code comes from the ?code= query
@@ -83,9 +85,8 @@ export default function HostSetup() {
                 })
                 // Reconcile any selection made while the answer was in flight.
                 // A source the server cannot query must not survive in state:
-                // it would ship in host:start and be dropped silently, and its
-                // chip would render checked-and-disabled, which cannot be
-                // cleared because a disabled input fires no onChange.
+                // it would ship in host:start and be dropped silently, and it
+                // renders no chip, so the host could never clear it.
                 setSources((current) => {
                     const allowed = current.filter((id) => configured.includes(id))
                     return allowed.length > 0 ? allowed : ['jellyfin']
@@ -111,19 +112,22 @@ export default function HostSetup() {
     }
 
     // Three states, three answers:
-    //   loading           -> everything enabled; nothing has been claimed yet
-    //   loaded, succeeded -> only what the server reported
-    //   loaded, failed    -> Jellyfin only, which the server always configures
-    function sourceConfigured(id: SourceID): boolean {
-        if (!sourcesLoaded) return true
-        if (!available) return id === 'jellyfin'
-        return available.sources.includes(id)
-    }
+    //   loading           -> Jellyfin alone, which every deployment configures
+    //   loaded, succeeded -> exactly what the server reported
+    //   loaded, failed    -> Jellyfin alone again
+    // Rendering only these means an unconfigured source never appears, rather
+    // than appearing greyed out.
+    const offeredSources: SourceID[] =
+        sourcesLoaded && available ? available.sources : ['jellyfin']
+
+    // Nothing beyond the local library is on offer, so point the host at what
+    // would unlock the rest.
+    const streamingUnavailable =
+        sourcesLoaded && offeredSources.every((id) => id === 'jellyfin')
 
     // At least one source must stay selected: a session with no source has no
     // deck to deal.
     function toggleSource(id: SourceID) {
-        if (!sourceConfigured(id)) return
         setSources((current) => {
             if (!current.includes(id)) return [...current, id]
             if (current.length === 1) return current
@@ -180,26 +184,29 @@ export default function HostSetup() {
 
             <fieldset className="chip-group source-picker">
                 <legend>Sources</legend>
-                {SELECTABLE_SOURCES.map((s) => {
-                    const configured = sourceConfigured(s.id)
-                    return (
-                        <label
-                            key={s.id}
-                            className={`chip source-chip source-chip-${s.id} ${sources.includes(s.id) ? 'checked' : ''}${configured ? '' : ' disabled'}`}
-                            title={configured ? undefined : 'Not configured on this server'}
-                        >
-                            <input
-                                type="checkbox"
-                                className="sr-only"
-                                checked={sources.includes(s.id)}
-                                disabled={!configured}
-                                onChange={() => toggleSource(s.id)}
-                            />
-                            {s.label}
-                            {!configured && <span className="chip-hint"> (not configured)</span>}
-                        </label>
-                    )
-                })}
+                {offeredSources.map((id) => (
+                    <label
+                        key={id}
+                        className={`chip source-chip source-chip-${id} ${sources.includes(id) ? 'checked' : ''}`}
+                    >
+                        <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={sources.includes(id)}
+                            onChange={() => toggleSource(id)}
+                        />
+                        {SOURCE_LABELS[id]}
+                    </label>
+                ))}
+                {streamingUnavailable && (
+                    <p className="source-hint">
+                        Add a{' '}
+                        <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer">
+                            TMDB API read token
+                        </a>{' '}
+                        to offer streaming services as sources.
+                    </p>
+                )}
             </fieldset>
 
             {available && available.genres.length > 0 && (

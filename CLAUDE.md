@@ -64,6 +64,10 @@ hand-curated and is not touched by this pipeline.
 
 - **Commits:** Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`, …).
 - **Keep it green:** the build passes and tests succeed before you stop.
+- **Sources are enumerated server-side.** `GET /api/library/filters` reports the
+  sources this deployment can query (`configuredSources` in `server/sources.go`),
+  and the frontend renders exactly that list. Do not add a client-side list of
+  streaming sources or duplicate the credential gating in the UI.
 - The docs (`CLAUDE.md`, `README.md`, `docs/*`) are written in a neutral,
   professional voice, since they are read by other agents and humans.
 
@@ -78,4 +82,5 @@ hand-curated and is not touched by this pipeline.
 | `PORT` | optional | Listen port (default 8080) |
 | `SESSION_TTL` | optional | Session expiry (default a few hours) |
 | `CACHE_DIR` | optional | Directory for the on-disk poster cache (default a temp dir); mount a volume in Docker to persist it across restarts |
-| `TMDB_READ_TOKEN` | optional | TMDB v4 API Read Access Token. Required to offer Netflix, Prime Video, or Disney+ as sources; without it only Jellyfin is available. Stays server-side, never sent to clients. |
+| `TMDB_READ_TOKEN` | optional | TMDB v4 API Read Access Token. Enables streaming services as sources. When unset, the server registers no streaming source, so the API does not advertise them and the UI does not render them. Stays server-side, never sent to clients. |
+| `STREAMING_PROVIDERS` | optional | Comma-separated streaming services to offer (`netflix`, `prime`, `disney`). Parsed once in `LoadConfig`: trimmed, case-insensitive, empty entries skipped, unknown names logged and ignored. Defaults to all three; inert without `TMDB_READ_TOKEN`. |

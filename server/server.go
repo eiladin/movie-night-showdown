@@ -36,7 +36,10 @@ func New(cfg Config) *Server {
 		SourceJellyfin: s.jellyfin,
 	}
 	s.sources = map[SourceID]MovieSource{SourceJellyfin: s.jellyfin}
-	for _, id := range []SourceID{SourceNetflix, SourcePrime, SourceDisney} {
+	// NewTMDBSource returns nil without a read token, so an unset
+	// TMDB_READ_TOKEN leaves s.sources Jellyfin-only and the streaming sources
+	// are never advertised to clients.
+	for _, id := range cfg.StreamingProviders {
 		if src := NewTMDBSource(cfg, id); src != nil {
 			s.sources[id] = src
 			s.fetchers[id] = src

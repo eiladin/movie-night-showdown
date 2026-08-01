@@ -142,15 +142,12 @@
     opacity: 0.7;
 }
 
-/* A source with no credentials on the server cannot be selected. */
-.chip.disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-
-.chip-hint {
-    font-size: 0.8em;
-    opacity: 0.75;
+/* Shown in place of the streaming chips when the server offers none. */
+.source-hint {
+    flex-basis: 100%;
+    margin: 0.25rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.7;
 }
 
 /* A source that is configured but did not respond to the preview query. */

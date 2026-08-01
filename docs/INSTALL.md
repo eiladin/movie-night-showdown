@@ -33,7 +33,8 @@ Create a folder for the deployment with two files in it.
 JELLYFIN_URL=http://jellyfin.local:8096
 JELLYFIN_API_KEY=your-jellyfin-api-key
 JELLYFIN_USER_ID=your-jellyfin-user-id   # optional; needed for "unwatched only"
-TMDB_READ_TOKEN=your-tmdb-v4-read-token  # optional; needed for streaming sources
+TMDB_READ_TOKEN=your-tmdb-v4-read-token  # optional; enables streaming sources
+STREAMING_PROVIDERS=netflix,prime,disney # optional; which streaming services to offer
 PUBLIC_URL=http://your-server-ip:8080
 SESSION_TTL=4h
 ```
@@ -96,7 +97,8 @@ Everything is configured through environment variables.
 | `JELLYFIN_URL` | yes | Base URL of your Jellyfin server. |
 | `JELLYFIN_API_KEY` | yes | Jellyfin API key. Stays server-side; never sent to clients. |
 | `JELLYFIN_USER_ID` | no | Needed for the "unwatched only" filter. |
-| `TMDB_READ_TOKEN` | optional | TMDB v4 API Read Access Token. Required to offer Netflix, Prime Video, or Disney+ as sources; without it only Jellyfin is available. Stays server-side, never sent to clients. |
+| `TMDB_READ_TOKEN` | no | TMDB v4 API Read Access Token. Unlocks streaming services as sources; without it only Jellyfin is offered. Stays server-side; never sent to clients. See [Streaming services](#streaming-services). |
+| `STREAMING_PROVIDERS` | no | Comma-separated list of streaming services to offer. Defaults to `netflix,prime,disney`. Ignored when `TMDB_READ_TOKEN` is unset. See [Streaming services](#streaming-services). |
 | `PUBLIC_URL` | yes | The URL people use to reach the app. Used to build the join links and QR codes, so it must be reachable from their devices. |
 | `PORT` | no | Port the app listens on. Defaults to `8080`. |
 | `SESSION_TTL` | no | How long an idle session survives. Defaults to a few hours (`4h`). |
@@ -106,6 +108,45 @@ The one that trips people up is `PUBLIC_URL`. It's the address the *phones* use,
 not the address the container uses internally. If your guests reach the app at
 `http://192.168.1.50:8080`, that's what belongs here — otherwise the QR code will
 point somewhere their phones can't reach.
+
+## Streaming services
+
+By default the deck is drawn from your Jellyfin library alone. Setting
+`TMDB_READ_TOKEN` adds streaming services — Netflix, Prime Video, and Disney+ —
+as additional sources the host can select when starting a showdown. Catalog data
+comes from [TMDB](https://www.themoviedb.org/); a movie that appears both in your
+library and on a streaming service is shown once, with a badge for each place it
+can be watched.
+
+To get a token, sign in to TMDB and open
+[Settings → API](https://www.themoviedb.org/settings/api). Request an API key,
+then copy the **API Read Access Token** (the long v4 token, not the shorter v3
+key) into `TMDB_READ_TOKEN`. The token stays on the server and is never sent to
+browsers.
+
+When the token is unset, the app does not advertise streaming sources at all:
+the API reports only Jellyfin, and the source picker shows only Jellyfin along
+with a short note about enabling the rest.
+
+### Choosing which services to offer
+
+`STREAMING_PROVIDERS` narrows the list. It takes a comma-separated set of names;
+accepted values are `netflix`, `prime`, and `disney`:
+
+```yaml
+STREAMING_PROVIDERS: netflix,disney
+```
+
+Behavior:
+
+- **Unset** — all three are offered, so existing deployments are unchanged.
+- Whitespace around names is trimmed and names are matched case-insensitively,
+  so `Netflix, DISNEY` is the same as `netflix,disney`.
+- Empty entries are skipped.
+- Unrecognized names are logged and ignored rather than failing startup. A value
+  containing only unrecognized names offers no streaming services.
+- With `TMDB_READ_TOKEN` unset the variable has no effect: no streaming service
+  can be queried without a token.
 
 ## Putting it behind a reverse proxy
 
