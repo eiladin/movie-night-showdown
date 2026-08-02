@@ -10,30 +10,42 @@ import (
 	"testing"
 )
 
+// testTMDBConfig is the minimum a TMDBSource needs, with the region set so
+// query assertions do not depend on LoadConfig having run.
+func testTMDBConfig() Config {
+	return Config{TMDBReadToken: "x", TMDBWatchRegion: defaultWatchRegion}
+}
+
 func newTestTMDBSource(t *testing.T, handler http.HandlerFunc) (*TMDBSource, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
-	s := NewTMDBSource(Config{TMDBReadToken: "test-token"}, SourceNetflix)
+	s := NewTMDBSource(
+		Config{TMDBReadToken: "test-token", TMDBWatchRegion: defaultWatchRegion},
+		StreamingProvider{ID: SourceNetflix, Name: "Netflix", TMDBID: 8},
+	)
 	if s == nil {
-		t.Fatalf("NewTMDBSource returned nil for a supported provider with a token")
+		t.Fatalf("NewTMDBSource returned nil for a resolved provider with a token")
 	}
 	s.baseURL = srv.URL
 	s.imageURL = srv.URL + "/img"
 	return s, srv
 }
 
-func TestNewTMDBSourceRequiresTokenAndProvider(t *testing.T) {
-	if got := NewTMDBSource(Config{}, SourceNetflix); got != nil {
+// Which providers exist is decided by resolution, not here; the only thing a
+// source still refuses to be built without is a token.
+func TestNewTMDBSourceRequiresToken(t *testing.T) {
+	p := StreamingProvider{ID: SourceNetflix, Name: "Netflix", TMDBID: 8}
+	if got := NewTMDBSource(Config{}, p); got != nil {
 		t.Fatalf("expected nil with no token, got %+v", got)
 	}
-	if got := NewTMDBSource(Config{TMDBReadToken: "x"}, SourceJellyfin); got != nil {
-		t.Fatalf("expected nil for an unsupported provider, got %+v", got)
+	if got := NewTMDBSource(Config{TMDBReadToken: "x"}, p); got == nil {
+		t.Fatalf("expected a source for a resolved provider with a token")
 	}
 }
 
 func TestDiscoverParamsMapsFilters(t *testing.T) {
-	s := NewTMDBSource(Config{TMDBReadToken: "x"}, SourceNetflix)
+	s := NewTMDBSource(testTMDBConfig(), StreamingProvider{ID: SourceNetflix, Name: "Netflix", TMDBID: 8})
 	f := Filters{
 		Genres:    []string{"Western", "Comedy", "Neo-Noir"},
 		YearMin:   1980,
@@ -69,7 +81,7 @@ func TestDiscoverParamsMapsFilters(t *testing.T) {
 }
 
 func TestDiscoverParamsOmitsUnsetFilters(t *testing.T) {
-	s := NewTMDBSource(Config{TMDBReadToken: "x"}, SourceDisney)
+	s := NewTMDBSource(testTMDBConfig(), StreamingProvider{ID: SourceDisney, Name: "Disney+", TMDBID: 337})
 	q := s.discoverParams(Filters{}, "", 1)
 	for _, k := range []string{"with_genres", "primary_release_date.gte", "primary_release_date.lte", "vote_average.gte", "certification", "certification_country"} {
 		if q.Has(k) {
@@ -82,7 +94,7 @@ func TestDiscoverParamsOmitsUnsetFilters(t *testing.T) {
 }
 
 func TestSamplePagesClampsToTotal(t *testing.T) {
-	s := NewTMDBSource(Config{TMDBReadToken: "x"}, SourceNetflix)
+	s := NewTMDBSource(testTMDBConfig(), StreamingProvider{ID: SourceNetflix, Name: "Netflix", TMDBID: 8})
 
 	if got := s.samplePages(0); got != nil {
 		t.Fatalf("samplePages(0) = %v, want nil", got)

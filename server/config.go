@@ -2,7 +2,6 @@ package server
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,47 +17,48 @@ type Config struct {
 	SessionTTL     string
 	CacheDir       string
 	TMDBReadToken  string
-	// StreamingProviders is the resolved list of streaming sources this
-	// deployment offers. It is inert without
-	// TMDBReadToken, since every streaming source is queried through TMDB.
-	StreamingProviders []SourceID
+	// TMDBWatchRegion is the ISO 3166-1 region streaming availability is
+	// judged against. Which services exist, and what they carry, both depend
+	// on it.
+	TMDBWatchRegion string
+	// StreamingProviders is the list of streaming services this deployment
+	// asks for, as written in the environment: provider names or numeric TMDB
+	// provider ids, normalized but not yet resolved. Resolution needs the
+	// network, so it happens in New rather than here. The list is inert
+	// without TMDBReadToken, since every streaming source is queried via TMDB.
+	StreamingProviders []string
+
+	// tmdbBaseURL is the TMDB API root. It is unexported and not read from the
+	// environment: it exists only so tests can point resolution at a stub.
+	tmdbBaseURL string
 }
 
 // defaultStreamingProviders is the set offered when STREAMING_PROVIDERS is
 // unset, preserving the behaviour deployments had before it existed.
-var defaultStreamingProviders = []SourceID{SourceNetflix, SourcePrime, SourceDisney}
+var defaultStreamingProviders = []string{
+	string(SourceNetflix), string(SourcePrime), string(SourceDisney),
+}
 
 // parseStreamingProviders reads the comma-separated STREAMING_PROVIDERS value.
-// Entries are trimmed and matched case-insensitively; empty entries are
-// skipped. An unset (or whitespace-only) value yields the default set. Unknown
-// names are logged and ignored rather than failing startup, so a typo degrades
-// the picker instead of taking the deployment down.
-func parseStreamingProviders(raw string) []SourceID {
+// Entries are trimmed, lowercased, and de-duplicated; empty entries are
+// skipped. An unset (or whitespace-only) value yields the default set.
+//
+// Entries are deliberately not validated here. Any TMDB watch provider may be
+// named, and knowing which names exist requires asking TMDB, so an unrecognized
+// entry is reported (and skipped) during resolution rather than at parse time.
+func parseStreamingProviders(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return defaultStreamingProviders
 	}
-	known := map[string]SourceID{
-		string(SourceNetflix): SourceNetflix,
-		string(SourcePrime):   SourcePrime,
-		string(SourceDisney):  SourceDisney,
-	}
-	seen := make(map[SourceID]bool, len(known))
-	out := make([]SourceID, 0, len(known))
+	seen := make(map[string]bool)
+	out := make([]string, 0, 4)
 	for _, part := range strings.Split(raw, ",") {
 		name := strings.ToLower(strings.TrimSpace(part))
-		if name == "" {
+		if name == "" || seen[name] {
 			continue
 		}
-		id, ok := known[name]
-		if !ok {
-			log.Printf("config: ignoring unknown STREAMING_PROVIDERS entry %q", name)
-			continue
-		}
-		if seen[id] {
-			continue
-		}
-		seen[id] = true
-		out = append(out, id)
+		seen[name] = true
+		out = append(out, name)
 	}
 	return out
 }
@@ -76,8 +76,14 @@ func LoadConfig() Config {
 		CacheDir:       os.Getenv("CACHE_DIR"),
 		TMDBReadToken:  os.Getenv("TMDB_READ_TOKEN"),
 
+		TMDBWatchRegion:    os.Getenv("TMDB_WATCH_REGION"),
 		StreamingProviders: parseStreamingProviders(os.Getenv("STREAMING_PROVIDERS")),
+		tmdbBaseURL:        tmdbAPIBase,
 	}
+	if cfg.TMDBWatchRegion == "" {
+		cfg.TMDBWatchRegion = defaultWatchRegion
+	}
+	cfg.TMDBWatchRegion = strings.ToUpper(cfg.TMDBWatchRegion)
 	if cfg.Port == "" {
 		cfg.Port = "8080"
 	}
@@ -117,13 +123,9 @@ func (c Config) String() string {
 	if c.TMDBReadToken != "" {
 		maskedTMDB = "***"
 	}
-	providers := make([]string, 0, len(c.StreamingProviders))
-	for _, id := range c.StreamingProviders {
-		providers = append(providers, string(id))
-	}
 	return fmt.Sprintf(
-		"JellyfinURL=%s JellyfinAPIKey=%s JellyfinUserID=%s PublicURL=%s Port=%s SessionTTL=%s CacheDir=%s TMDBReadToken=%s StreamingProviders=%s",
+		"JellyfinURL=%s JellyfinAPIKey=%s JellyfinUserID=%s PublicURL=%s Port=%s SessionTTL=%s CacheDir=%s TMDBReadToken=%s TMDBWatchRegion=%s StreamingProviders=%s",
 		c.JellyfinURL, masked, c.JellyfinUserID, c.PublicURL, c.Port, c.SessionTTL, c.CacheDir, maskedTMDB,
-		strings.Join(providers, ","),
+		c.TMDBWatchRegion, strings.Join(c.StreamingProviders, ","),
 	)
 }

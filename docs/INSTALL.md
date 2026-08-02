@@ -42,7 +42,8 @@ JELLYFIN_URL=http://jellyfin.local:8096
 JELLYFIN_API_KEY=your-jellyfin-api-key
 JELLYFIN_USER_ID=your-jellyfin-user-id   # optional; needed for "unwatched only"
 TMDB_READ_TOKEN=your-tmdb-v4-read-token  # optional; enables streaming sources
-STREAMING_PROVIDERS=netflix,prime,disney # optional; which streaming services to offer
+STREAMING_PROVIDERS=netflix,prime,disney # optional; any TMDB watch provider, by name or id
+TMDB_WATCH_REGION=US                     # optional; defaults to US
 PUBLIC_URL=http://your-server-ip:8080
 SESSION_TTL=4h
 ```
@@ -106,7 +107,8 @@ Everything is configured through environment variables.
 | `JELLYFIN_API_KEY` | one of¹ | Jellyfin API key. Stays server-side; never sent to clients. |
 | `JELLYFIN_USER_ID` | no | Needed for the "unwatched only" filter. |
 | `TMDB_READ_TOKEN` | one of¹ | TMDB v4 API Read Access Token. Unlocks streaming services as sources; without it only Jellyfin is offered. Stays server-side; never sent to clients. See [Streaming services](#streaming-services). |
-| `STREAMING_PROVIDERS` | no | Comma-separated list of streaming services to offer. Defaults to `netflix,prime,disney`. Ignored when `TMDB_READ_TOKEN` is unset. See [Streaming services](#streaming-services). |
+| `STREAMING_PROVIDERS` | no | Comma-separated list of streaming services to offer, by name or numeric TMDB provider id. Any provider TMDB tracks is accepted. Defaults to `netflix,prime,disney`. Ignored when `TMDB_READ_TOKEN` is unset. See [Choosing which services to offer](#choosing-which-services-to-offer). |
+| `TMDB_WATCH_REGION` | no | ISO 3166-1 country code deciding which streaming services exist and what they carry. Defaults to `US`. See [Setting the region](#setting-the-region). |
 | `PUBLIC_URL` | yes | The URL people use to reach the app. Used to build the join links and QR codes, so it must be reachable from their devices. |
 | `PORT` | no | Port the app listens on. Defaults to `8080`. |
 | `SESSION_TTL` | no | How long an idle session survives. Defaults to a few hours (`4h`). |
@@ -125,8 +127,10 @@ point somewhere their phones can't reach.
 ## Streaming services
 
 By default the deck is drawn from your Jellyfin library alone. Setting
-`TMDB_READ_TOKEN` adds streaming services — Netflix, Prime Video, and Disney+ —
-as additional sources the host can select when starting a showdown. Catalog data
+`TMDB_READ_TOKEN` adds streaming services as additional sources the host can
+select when starting a showdown. Netflix, Prime Video, and Disney+ are offered
+by default, and any other service TMDB tracks — Hulu, Peacock, Max, and so on —
+can be requested with `STREAMING_PROVIDERS`. Catalog data
 comes from [TMDB](https://www.themoviedb.org/); a movie that appears both in your
 library and on a streaming service is shown once, with a badge for each place it
 can be watched.
@@ -157,23 +161,82 @@ deployment that has a library:
 
 ### Choosing which services to offer
 
-`STREAMING_PROVIDERS` narrows the list. It takes a comma-separated set of names;
-accepted values are `netflix`, `prime`, and `disney`:
+`STREAMING_PROVIDERS` is a comma-separated list of the services to offer. It is
+not limited to a fixed set: **any watch provider TMDB tracks can be named**, so
+if your household uses Hulu and Peacock, ask for those.
 
 ```yaml
-STREAMING_PROVIDERS: netflix,disney
+STREAMING_PROVIDERS: hulu,peacock,max
 ```
 
 Behavior:
 
-- **Unset** — all three are offered, so existing deployments are unchanged.
-- Whitespace around names is trimmed and names are matched case-insensitively,
-  so `Netflix, DISNEY` is the same as `netflix,disney`.
-- Empty entries are skipped.
-- Unrecognized names are logged and ignored rather than failing startup. A value
-  containing only unrecognized names offers no streaming services.
+- **Unset** — Netflix, Prime Video, and Disney+ are offered, so existing
+  deployments are unchanged.
+- Whitespace around entries is trimmed, names are matched case-insensitively,
+  empty entries are skipped, and duplicates collapse. `Netflix, DISNEY` is the
+  same as `netflix,disney`.
+- The order you list them in is the order they appear in the picker.
+- Names are matched against TMDB's watch-provider list for your region, by the
+  provider's name or by a dashed version of it — `hbo max` and `hbo-max` both
+  find HBO Max.
+- An entry that matches nothing is logged and skipped. It never fails startup,
+  so a typo costs you one service rather than the whole deployment.
 - With `TMDB_READ_TOKEN` unset the variable has no effect: no streaming service
   can be queried without a token.
+
+These eight are recognized without any lookup, and keep working even if TMDB is
+unreachable when the app starts: `netflix`, `prime`, `disney`, `hulu`,
+`peacock`, `max`, `apple`, `paramount`. Everything else is resolved by asking
+TMDB once at startup.
+
+#### Using a numeric TMDB provider id
+
+Instead of a name you can give the provider's numeric TMDB id. This skips name
+matching entirely, which is worth doing when a service's name is ambiguous,
+regional, or has changed:
+
+```yaml
+STREAMING_PROVIDERS: 15,386,1899     # Hulu, Peacock, HBO Max
+```
+
+Names and ids can be mixed in the same list (`netflix,15,peacock`).
+
+To find an id, ask TMDB for the provider list for your region. In a browser or
+with `curl`, using your read token:
+
+```bash
+curl -s -H "Authorization: Bearer $TMDB_READ_TOKEN" \
+  "https://api.themoviedb.org/3/watch/providers/movie?watch_region=US" \
+  | jq '.results[] | {id: .provider_id, name: .provider_name}'
+```
+
+Each entry's `provider_id` is what goes in `STREAMING_PROVIDERS`. Without `jq`,
+open the same URL in a browser session signed in to TMDB and search the JSON for
+the service name. The ids are stable, so this is a one-time lookup.
+
+If you give an id TMDB does not list for your region, it is still used — the id
+is all the catalog query needs — but it shows up unnamed in the picker, as
+`Provider <id>`. That usually means the region is wrong rather than the id.
+
+### Setting the region
+
+Streaming availability is regional: which services exist, and what each one
+carries, both depend on where you are. `TMDB_WATCH_REGION` takes an ISO 3166-1
+country code and defaults to `US`.
+
+```yaml
+TMDB_WATCH_REGION: GB
+```
+
+It applies to both provider resolution and every catalog query, so setting it
+wrong is the usual explanation for a service that resolves but returns nothing.
+
+### Checking what resolved
+
+The app's own `/setup` page lists the sources actually in use, so you can
+confirm a name resolved the way you expected. The startup log records anything
+that did not.
 
 ## Putting it behind a reverse proxy
 

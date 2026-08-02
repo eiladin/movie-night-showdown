@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { getAvailableFilters, getPreview, warmLibrary, type AvailableFilters, type PreviewFilters, type PreviewResponse, type SourceID } from '../api'
+import { getAvailableFilters, getPreview, warmLibrary, type AvailableFilters, type PreviewFilters, type PreviewResponse, type SourceDescriptor, type SourceID } from '../api'
 import { useSessionStore } from '../store'
 import '../styles/admin.css'
 
@@ -32,18 +32,6 @@ function sortRatings(ratings: string[]): string[] {
 
 function sortGenres(genres: string[]): string[] {
     return [...genres].sort((a, b) => a.localeCompare(b))
-}
-
-// SOURCE_LABELS gives each source id its display name. Which sources are
-// actually offered is decided entirely by the server (the `sources` field of
-// GET /api/library/filters); this map only names them. Do not reintroduce a
-// client-side list of streaming sources: a deployment without a TMDB read
-// token must not render them at all.
-const SOURCE_LABELS: Record<SourceID, string> = {
-    jellyfin: 'Jellyfin',
-    netflix: 'Netflix',
-    prime: 'Prime Video',
-    disney: 'Disney+',
 }
 
 // HostSetup is the host's filter + library-preview page. The host arrives
@@ -94,10 +82,11 @@ export default function HostSetup() {
                 // Jellyfin: a streaming-only deployment has no Jellyfin to
                 // select, and a hardcoded fallback would leave the picker
                 // holding a source the server cannot query.
+                const configuredIds = configured.map((s) => s.id)
                 setSources((current) => {
-                    const allowed = current.filter((id) => configured.includes(id))
+                    const allowed = current.filter((id) => configuredIds.includes(id))
                     if (allowed.length > 0) return allowed
-                    return configured.length > 0 ? [configured[0]] : []
+                    return configuredIds.length > 0 ? [configuredIds[0]] : []
                 })
                 setSourcesLoaded(true)
             })
@@ -123,12 +112,19 @@ export default function HostSetup() {
     // Render exactly what the server reported, and nothing before it answers.
     // An unconfigured source never appears at all, rather than appearing greyed
     // out, and no chip flashes on the way to a deployment that lacks it.
-    const offeredSources: SourceID[] = sourcesLoaded && available ? available.sources : []
+    const offeredSources: SourceDescriptor[] = sourcesLoaded && available ? available.sources : []
 
     // Nothing beyond the local library is on offer, so point the host at what
     // would unlock the rest.
     const streamingUnavailable =
-        sourcesLoaded && available !== null && offeredSources.every((id) => id === 'jellyfin')
+        sourcesLoaded && available !== null && offeredSources.every((s) => s.id === 'jellyfin')
+
+    // sourceLabel names a source the server reported, falling back to its id.
+    // Ids are not always readable — a provider configured by number resolves to
+    // something like "tmdb-1899" — so prefer the label wherever one exists.
+    function sourceLabel(id: SourceID): string {
+        return offeredSources.find((s) => s.id === id)?.label ?? id
+    }
 
     // At least one source must stay selected: a session with no source has no
     // deck to deal.
@@ -189,18 +185,18 @@ export default function HostSetup() {
 
             <fieldset className="chip-group source-picker">
                 <legend>Sources</legend>
-                {offeredSources.map((id) => (
+                {offeredSources.map((s) => (
                     <label
-                        key={id}
-                        className={`chip source-chip source-chip-${id} ${sources.includes(id) ? 'checked' : ''}`}
+                        key={s.id}
+                        className={`chip source-chip source-chip-${s.id} ${sources.includes(s.id) ? 'checked' : ''}`}
                     >
                         <input
                             type="checkbox"
                             className="sr-only"
-                            checked={sources.includes(id)}
-                            onChange={() => toggleSource(id)}
+                            checked={sources.includes(s.id)}
+                            onChange={() => toggleSource(s.id)}
                         />
-                        {SOURCE_LABELS[id]}
+                        {s.label}
                     </label>
                 ))}
                 {streamingUnavailable && (
@@ -286,7 +282,8 @@ export default function HostSetup() {
                 <div className="preview-results">
                     {(preview.unavailable?.length ?? 0) > 0 && (
                         <p className="preview-unavailable">
-                            Could not reach: {preview.unavailable.join(', ')}. Those results are missing.
+                            Could not reach: {preview.unavailable.map(sourceLabel).join(', ')}. Those
+                            results are missing.
                         </p>
                     )}
                     <p className="preview-count">

@@ -18,13 +18,13 @@ type setupResponse struct {
 	// Streaming reports whether any streaming service is available.
 	Streaming bool `json:"streaming"`
 	// Sources is the resolved source list, the same one the picker renders.
-	Sources []SourceID `json:"sources"`
+	Sources []SourceDescriptor `json:"sources"`
 }
 
 // handleSetup reports what this deployment is able to do, so a fresh install
 // can explain itself instead of failing at the first query.
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
-	sources := configuredSources(s.sources)
+	sources := configuredSources(s.sources, s.order)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(setupResponse{
 		Configured: len(sources) > 0,

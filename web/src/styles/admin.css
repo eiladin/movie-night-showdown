@@ -120,7 +120,10 @@
 }
 
 /* Source picker: reuses .chip, adding a per-service accent when selected so
-   the four options are distinguishable at a glance. */
+   familiar options are distinguishable at a glance. These accents are optional
+   decoration only — the source set is open (any TMDB watch provider can be
+   configured), and a service with no rule here still renders correctly from
+   .chip.checked, just without a brand color. */
 .source-picker legend {
     font-size: 0.9rem;
     opacity: 0.8;

@@ -4,7 +4,14 @@ import "context"
 
 // SourceID identifies one movie source. These values are part of the
 // client-facing JSON contract (see web/src/api.ts) and are used as the
-// namespace prefix in Movie.ID.
+// namespace prefix in Movie.ID and in the image proxy path, so they must stay
+// URL-safe.
+//
+// The set is open: streaming sources are whatever TMDB watch providers this
+// deployment configured, so clients must treat an unrecognized id as ordinary
+// data rather than an error. The constants below are the ids this app has
+// always shipped; they are pinned so existing configurations and saved host
+// selections keep working (see knownProviders in providers.go).
 type SourceID string
 
 const (
@@ -17,8 +24,27 @@ const (
 // Availability records that a movie can be watched on one particular source.
 // A movie present both in the local library and on a streaming service carries
 // one entry per source.
+//
+// Label travels with the entry because the source set is open: a client cannot
+// hold a table of display names for providers it has never heard of, so the
+// server names each one at the point of use.
 type Availability struct {
 	Source SourceID `json:"source"`
+	Label  string   `json:"label,omitempty"`
+}
+
+// NamedSource is a source that carries its own display name. Sources without
+// one fall back to their id.
+type NamedSource interface {
+	Name() string
+}
+
+// sourceLabel is the display name for a source, falling back to its id.
+func sourceLabel(s MovieSource) string {
+	if n, ok := s.(NamedSource); ok && n.Name() != "" {
+		return n.Name()
+	}
+	return string(s.ID())
 }
 
 // MovieSource is one queryable catalog of movies. Jellyfin and each supported

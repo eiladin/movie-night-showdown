@@ -44,13 +44,13 @@ func TestSetupReportsStreamingOnly(t *testing.T) {
 	got, _ := decodeSetup(t, Config{
 		Port: "8080", SessionTTL: "4h",
 		TMDBReadToken:      "token",
-		StreamingProviders: []SourceID{SourceNetflix},
+		StreamingProviders: []string{"netflix"},
 	})
 
 	if !got.Configured || got.Jellyfin || !got.Streaming {
 		t.Fatalf("got %+v, want configured+streaming without jellyfin", got)
 	}
-	if len(got.Sources) != 1 || got.Sources[0] != SourceNetflix {
+	if len(got.Sources) != 1 || got.Sources[0].ID != SourceNetflix {
 		t.Fatalf("got sources %v, want [netflix]", got.Sources)
 	}
 }
@@ -65,7 +65,7 @@ func TestSetupReportsJellyfinOnly(t *testing.T) {
 	if !got.Configured || !got.Jellyfin || got.Streaming {
 		t.Fatalf("got %+v, want configured+jellyfin without streaming", got)
 	}
-	if len(got.Sources) != 1 || got.Sources[0] != SourceJellyfin {
+	if len(got.Sources) != 1 || got.Sources[0].ID != SourceJellyfin {
 		t.Fatalf("got sources %v, want [jellyfin]", got.Sources)
 	}
 }
@@ -76,7 +76,7 @@ func TestSetupReportsNoStreamingWhenProvidersEmpty(t *testing.T) {
 	got, _ := decodeSetup(t, Config{
 		Port: "8080", SessionTTL: "4h",
 		TMDBReadToken:      "token",
-		StreamingProviders: []SourceID{},
+		StreamingProviders: []string{},
 	})
 
 	if got.Configured || got.Streaming {
@@ -106,7 +106,7 @@ func TestLibraryFiltersFallsBackToDefaultVocabulary(t *testing.T) {
 	cfg := Config{
 		Port: "8080", SessionTTL: "4h", CacheDir: t.TempDir(),
 		TMDBReadToken:      "token",
-		StreamingProviders: []SourceID{SourceNetflix},
+		StreamingProviders: []string{"netflix"},
 	}
 	rec := httptest.NewRecorder()
 	New(cfg).Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/library/filters", nil))

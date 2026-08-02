@@ -39,6 +39,7 @@ type Client struct {
 	done          chan struct{} // closed by readPump on exit; signals writePump to stop
 	session       *Session
 	sources       map[SourceID]MovieSource // used by handleHostStart to deal the deck
+	order         []SourceID               // canonical source order for selectSources
 	participantID string                   // set once join() attaches this client to a participant
 	token         string                   // from ?token=; used to match/resume a participant
 }
@@ -67,6 +68,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		done:    make(chan struct{}),
 		session: session,
 		sources: s.sources,
+		order:   s.order,
 		token:   token,
 	}
 
@@ -311,7 +313,7 @@ func (c *Client) handleHostStart(raw json.RawMessage) {
 	// holding session.mu so they can never stall other participants. Sources are
 	// queried concurrently, so this costs one round trip rather than one per
 	// source.
-	sources := selectSources(c.sources, p.Filters.Sources)
+	sources := selectSources(c.sources, p.Filters.Sources, c.order)
 	movies, failed, err := gatherShoe(context.Background(), sources, p.Filters)
 	if err != nil {
 		log.Printf("host:start: every selected source failed")

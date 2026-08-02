@@ -1,10 +1,16 @@
 package server
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
 )
+
+// providerResolveTimeout bounds the one TMDB call made at startup to resolve
+// provider names. Startup must not hang on a slow upstream; on timeout the
+// built-in table is all that resolves.
+const providerResolveTimeout = 10 * time.Second
 
 type Server struct {
 	mux      *http.ServeMux
@@ -14,8 +20,13 @@ type Server struct {
 	cache    *posterCache
 	fetchers map[SourceID]PosterFetcher
 	sources  map[SourceID]MovieSource
-	version  string
-	commit   string
+	// order is this deployment's canonical source order: Jellyfin first when
+	// present, then the streaming services in the order they were configured.
+	// It is per-deployment rather than a fixed list because which streaming
+	// services exist is resolved at startup from STREAMING_PROVIDERS.
+	order   []SourceID
+	version string
+	commit  string
 }
 
 func New(cfg Config) *Server {
@@ -40,15 +51,26 @@ func New(cfg Config) *Server {
 	if cfg.JellyfinConfigured() {
 		s.fetchers[SourceJellyfin] = s.jellyfin
 		s.sources[SourceJellyfin] = s.jellyfin
+		s.order = append(s.order, SourceJellyfin)
 	}
-	// NewTMDBSource returns nil without a read token, so an unset
-	// TMDB_READ_TOKEN leaves s.sources Jellyfin-only and the streaming sources
-	// are never advertised to clients.
-	for _, id := range cfg.StreamingProviders {
-		if src := NewTMDBSource(cfg, id); src != nil {
-			s.sources[id] = src
-			s.fetchers[id] = src
+	// Resolution needs the network for anything outside the built-in table, so
+	// it is bounded and non-fatal: whatever resolves is offered, and the rest
+	// is logged. It is skipped entirely without a read token, so an unset
+	// TMDB_READ_TOKEN never advertises a streaming source at all.
+	ctx, cancel := context.WithTimeout(context.Background(), providerResolveTimeout)
+	defer cancel()
+	for _, p := range resolveStreamingProviders(ctx, cfg, cfg.StreamingProviders) {
+		src := NewTMDBSource(cfg, p)
+		if src == nil {
+			continue
 		}
+		if _, clash := s.sources[p.ID]; clash {
+			log.Printf("server: skipping duplicate source %q", p.ID)
+			continue
+		}
+		s.sources[p.ID] = src
+		s.fetchers[p.ID] = src
+		s.order = append(s.order, p.ID)
 	}
 	if len(s.sources) == 0 {
 		log.Print("server: no movie source is configured — set JELLYFIN_URL and " +

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func equalSourceIDs(a, b []SourceID) bool {
+func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -21,23 +21,26 @@ func TestParseStreamingProviders(t *testing.T) {
 	cases := []struct {
 		name string
 		raw  string
-		want []SourceID
+		want []string
 	}{
 		{"unset falls back to the default set", "", defaultStreamingProviders},
 		{"whitespace only falls back too", "   ", defaultStreamingProviders},
-		{"custom subset", "netflix,disney", []SourceID{SourceNetflix, SourceDisney}},
-		{"single entry", "prime", []SourceID{SourcePrime}},
-		{"whitespace and case are normalised", " Netflix , PRIME ", []SourceID{SourceNetflix, SourcePrime}},
-		{"empty entries are skipped", "netflix,,,disney,", []SourceID{SourceNetflix, SourceDisney}},
-		{"unknown entries are ignored", "netflix,hulu,disney", []SourceID{SourceNetflix, SourceDisney}},
-		{"only unknown entries yields none", "hulu,peacock", []SourceID{}},
-		{"duplicates collapse", "netflix,netflix", []SourceID{SourceNetflix}},
+		{"custom subset", "netflix,disney", []string{"netflix", "disney"}},
+		{"single entry", "prime", []string{"prime"}},
+		{"whitespace and case are normalised", " Netflix , PRIME ", []string{"netflix", "prime"}},
+		{"empty entries are skipped", "netflix,,,disney,", []string{"netflix", "disney"}},
+		{"duplicates collapse", "netflix,netflix", []string{"netflix"}},
+		// Entries outside the built-in table are kept: they are resolved
+		// against TMDB later, not judged here.
+		{"unfamiliar names survive parsing", "hulu,peacock", []string{"hulu", "peacock"}},
+		{"numeric ids survive parsing", "15, 386", []string{"15", "386"}},
+		{"configured order is preserved", "disney,netflix", []string{"disney", "netflix"}},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			got := parseStreamingProviders(tc.raw)
-			if !equalSourceIDs(got, tc.want) {
+			if !equalStrings(got, tc.want) {
 				t.Fatalf("parseStreamingProviders(%q) = %v, want %v", tc.raw, got, tc.want)
 			}
 		})

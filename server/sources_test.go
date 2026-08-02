@@ -21,12 +21,25 @@ func (f *fakeSource) Search(ctx context.Context, flt Filters) ([]Movie, error) {
 	return f.movies, f.err
 }
 
+// testOrder is the canonical order used by tests that build a source map by
+// hand. Production builds this per deployment (see Server.order).
+var testOrder = []SourceID{SourceJellyfin, SourceNetflix, SourcePrime, SourceDisney}
+
+// sourceIDs drops the labels, so order-and-membership assertions stay readable.
+func sourceIDs(descs []SourceDescriptor) []SourceID {
+	out := make([]SourceID, len(descs))
+	for i, d := range descs {
+		out[i] = d.ID
+	}
+	return out
+}
+
 func TestSelectSourcesDefaultsToJellyfin(t *testing.T) {
 	avail := map[SourceID]MovieSource{
 		SourceJellyfin: &fakeSource{id: SourceJellyfin},
 		SourceNetflix:  &fakeSource{id: SourceNetflix},
 	}
-	got := selectSources(avail, nil)
+	got := selectSources(avail, nil, testOrder)
 	if len(got) != 1 || got[0].ID() != SourceJellyfin {
 		t.Fatalf("empty selection should fall back to Jellyfin alone, got %d sources", len(got))
 	}
@@ -34,7 +47,7 @@ func TestSelectSourcesDefaultsToJellyfin(t *testing.T) {
 
 func TestSelectSourcesSkipsUnconfigured(t *testing.T) {
 	avail := map[SourceID]MovieSource{SourceJellyfin: &fakeSource{id: SourceJellyfin}}
-	got := selectSources(avail, []SourceID{SourceJellyfin, SourceDisney})
+	got := selectSources(avail, []SourceID{SourceJellyfin, SourceDisney}, testOrder)
 	if len(got) != 1 || got[0].ID() != SourceJellyfin {
 		t.Fatalf("unconfigured sources must be skipped, got %d sources", len(got))
 	}
@@ -128,7 +141,7 @@ func TestConfiguredSourcesUsesCanonicalOrder(t *testing.T) {
 	// against an implementation that ranges over the map.
 	want := []SourceID{SourceJellyfin, SourceNetflix, SourceDisney}
 	for i := 0; i < 20; i++ {
-		got := configuredSources(available)
+		got := sourceIDs(configuredSources(available, testOrder))
 		if len(got) != len(want) {
 			t.Fatalf("got %v, want %v", got, want)
 		}
@@ -143,7 +156,7 @@ func TestConfiguredSourcesUsesCanonicalOrder(t *testing.T) {
 func TestConfiguredSourcesOmitsUnregistered(t *testing.T) {
 	available := map[SourceID]MovieSource{SourceJellyfin: &fakeSource{id: SourceJellyfin}}
 
-	got := configuredSources(available)
+	got := sourceIDs(configuredSources(available, testOrder))
 
 	if len(got) != 1 || got[0] != SourceJellyfin {
 		t.Fatalf("got %v, want [jellyfin]", got)
@@ -168,7 +181,8 @@ func TestServerEnumeratesJellyfinOnlyWithoutTMDBToken(t *testing.T) {
 	cfg := baseConfig()
 	cfg.CacheDir = t.TempDir()
 
-	got := configuredSources(New(cfg).sources)
+	srv := New(cfg)
+	got := sourceIDs(configuredSources(srv.sources, srv.order))
 
 	if len(got) != 1 || got[0] != SourceJellyfin {
 		t.Fatalf("got %v, want [jellyfin]", got)
@@ -181,7 +195,8 @@ func TestServerEnumeratesConfiguredProvidersWithTMDBToken(t *testing.T) {
 	cfg.CacheDir = t.TempDir()
 	cfg.TMDBReadToken = "token"
 
-	got := configuredSources(New(cfg).sources)
+	srv := New(cfg)
+	got := sourceIDs(configuredSources(srv.sources, srv.order))
 
 	want := []SourceID{SourceJellyfin, SourceNetflix, SourcePrime, SourceDisney}
 	if len(got) != len(want) {
@@ -199,9 +214,10 @@ func TestServerEnumerationHonoursStreamingProviders(t *testing.T) {
 	cfg := baseConfig()
 	cfg.CacheDir = t.TempDir()
 	cfg.TMDBReadToken = "token"
-	cfg.StreamingProviders = []SourceID{SourceDisney}
+	cfg.StreamingProviders = []string{"disney"}
 
-	got := configuredSources(New(cfg).sources)
+	srv := New(cfg)
+	got := sourceIDs(configuredSources(srv.sources, srv.order))
 
 	want := []SourceID{SourceJellyfin, SourceDisney}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
@@ -217,7 +233,7 @@ func TestSelectSourcesFallsBackToFirstConfiguredWithoutJellyfin(t *testing.T) {
 		SourcePrime:  &fakeSource{id: SourcePrime},
 	}
 
-	got := selectSources(available, nil)
+	got := selectSources(available, nil, testOrder)
 
 	if len(got) != 1 || got[0].ID() != SourcePrime {
 		t.Fatalf("got %v, want [prime]", got)
@@ -231,7 +247,7 @@ func TestSelectSourcesFallbackPrefersJellyfin(t *testing.T) {
 		SourceJellyfin: &fakeSource{id: SourceJellyfin},
 	}
 
-	got := selectSources(available, []SourceID{"hulu"})
+	got := selectSources(available, []SourceID{"hulu"}, testOrder)
 
 	if len(got) != 1 || got[0].ID() != SourceJellyfin {
 		t.Fatalf("got %v, want [jellyfin]", got)
@@ -240,7 +256,7 @@ func TestSelectSourcesFallbackPrefersJellyfin(t *testing.T) {
 
 // With nothing configured there is no fallback to make.
 func TestSelectSourcesReturnsNoneWhenNothingConfigured(t *testing.T) {
-	got := selectSources(map[SourceID]MovieSource{}, []SourceID{SourceJellyfin})
+	got := selectSources(map[SourceID]MovieSource{}, []SourceID{SourceJellyfin}, testOrder)
 
 	if len(got) != 0 {
 		t.Fatalf("got %v, want none", got)
@@ -253,7 +269,8 @@ func TestServerRegistersNoSourcesWhenNothingConfigured(t *testing.T) {
 	cfg := Config{Port: "8080", SessionTTL: "4h", CacheDir: t.TempDir(),
 		StreamingProviders: defaultStreamingProviders}
 
-	got := configuredSources(New(cfg).sources)
+	srv := New(cfg)
+	got := sourceIDs(configuredSources(srv.sources, srv.order))
 
 	if len(got) != 0 {
 		t.Fatalf("got %v, want none", got)

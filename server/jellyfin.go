@@ -140,7 +140,7 @@ func (c *JellyfinClient) Movies(ctx context.Context, filters Filters) ([]Movie, 
 			CommunityRating: it.CommunityRating,
 			OfficialRating:  it.OfficialRating,
 			PosterURL:       posterURL,
-			Availability:    []Availability{{Source: SourceJellyfin}},
+			Availability:    []Availability{{Source: SourceJellyfin, Label: "Jellyfin"}},
 		}
 		movies = append(movies, m)
 	}

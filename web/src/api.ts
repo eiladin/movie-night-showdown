@@ -1,9 +1,25 @@
 // SourceID mirrors server.SourceID (see server/source.go).
-export type SourceID = 'jellyfin' | 'netflix' | 'prime' | 'disney'
+//
+// The set is open, not a union: streaming sources are whatever TMDB watch
+// providers the deployment configured, so the frontend cannot know their ids
+// ahead of time. Never narrow this to a literal union — a deployment offering
+// Hulu or Starz would stop type-checking, and the picker is server-driven
+// precisely so it does not need to know.
+export type SourceID = string
 
-// Availability mirrors server.Availability's JSON shape.
+// SourceDescriptor mirrors server.SourceDescriptor. The label is carried
+// alongside the id because the frontend holds no table of provider names.
+export interface SourceDescriptor {
+    id: SourceID
+    label: string
+}
+
+// Availability mirrors server.Availability's JSON shape. label is the display
+// name of the service; it may be absent on older payloads, so render the id as
+// a fallback.
 export interface Availability {
     source: SourceID
+    label?: string
 }
 
 // Movie mirrors server.Movie's JSON shape (see server/jellyfin.go).
@@ -85,9 +101,10 @@ export async function warmLibrary(filters: PreviewFilters): Promise<number> {
 export interface AvailableFilters {
     genres: string[]
     officialRatings: string[]
-    // sources lists the movie sources this deployment has credentials for. A
-    // source absent here cannot be selected — it would be dropped silently.
-    sources: SourceID[]
+    // sources lists the movie sources this deployment has credentials for,
+    // with their display names, in the order they should be offered. A source
+    // absent here cannot be selected — it would be dropped silently.
+    sources: SourceDescriptor[]
 }
 
 export async function getAvailableFilters(): Promise<AvailableFilters> {
@@ -106,7 +123,7 @@ export interface SetupStatus {
     configured: boolean
     jellyfin: boolean
     streaming: boolean
-    sources: SourceID[]
+    sources: SourceDescriptor[]
 }
 
 export async function getSetupStatus(): Promise<SetupStatus> {

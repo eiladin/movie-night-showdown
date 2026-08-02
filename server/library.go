@@ -21,7 +21,7 @@ type libraryPreviewResponse struct {
 func (s *Server) handleLibraryPreview(w http.ResponseWriter, r *http.Request) {
 	filters := ParseFilters(r.URL.Query())
 
-	sources := selectSources(s.sources, filters.Sources)
+	sources := selectSources(s.sources, filters.Sources, s.order)
 	movies, failed, err := gatherShoe(r.Context(), sources, filters)
 	if err != nil {
 		log.Printf("library preview: %v", err)
@@ -49,7 +49,7 @@ func (s *Server) handleLibraryPreview(w http.ResponseWriter, r *http.Request) {
 // keeps its existing shape and only gains "sources".
 type libraryFiltersResponse struct {
 	AvailableFilters
-	Sources []SourceID `json:"sources"`
+	Sources []SourceDescriptor `json:"sources"`
 }
 
 // handleLibraryFilters returns the available filter options (genres, ratings).
@@ -74,7 +74,7 @@ func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(libraryFiltersResponse{
 		AvailableFilters: filters,
-		Sources:          configuredSources(s.sources),
+		Sources:          configuredSources(s.sources, s.order),
 	})
 }
 
@@ -84,7 +84,7 @@ func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLibraryWarm(w http.ResponseWriter, r *http.Request) {
 	filters := ParseFilters(r.URL.Query())
 
-	sources := selectSources(s.sources, filters.Sources)
+	sources := selectSources(s.sources, filters.Sources, s.order)
 	movies, _, err := gatherShoe(r.Context(), sources, filters)
 	if err != nil {
 		log.Printf("library warm: %v", err)

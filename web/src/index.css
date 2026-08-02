@@ -202,6 +202,7 @@ select:focus {
     white-space: nowrap;
 }
 
+/* Optional brand accents; unlisted sources fall back to the default color. */
 .source-badge-jellyfin { color: #00a4dc; }
 .source-badge-netflix { color: #e50914; }
 .source-badge-prime { color: #00a8e1; }

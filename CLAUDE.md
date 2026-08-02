@@ -68,6 +68,12 @@ hand-curated and is not touched by this pipeline.
   sources this deployment can query (`configuredSources` in `server/sources.go`),
   and the frontend renders exactly that list. Do not add a client-side list of
   streaming sources or duplicate the credential gating in the UI.
+- **`SourceID` is an open set.** Streaming sources are whatever TMDB watch
+  providers the deployment configured, so no fixed list of source ids or display
+  names may exist on either side. Labels travel with the data: `SourceDescriptor`
+  on the source list, `Availability.Label` on each card. `knownProviders` in
+  `server/providers.go` is an offline shortcut and a pin for the ids this app
+  shipped with — never a limit on what can be configured.
 - **Jellyfin is optional.** It is one source among peers and is registered only
   when its credentials are set. Code must not assume it exists: filter options
   fall back to `defaultAvailableFilters()` without it, and `selectSources` falls
@@ -87,7 +93,8 @@ hand-curated and is not touched by this pipeline.
 | `SESSION_TTL` | optional | Session expiry (default a few hours) |
 | `CACHE_DIR` | optional | Directory for the on-disk poster cache (default a temp dir); mount a volume in Docker to persist it across restarts |
 | `TMDB_READ_TOKEN` | one of¹ | TMDB v4 API Read Access Token. Enables streaming services as sources. When unset, the server registers no streaming source, so the API does not advertise them and the UI does not render them. Stays server-side, never sent to clients. |
-| `STREAMING_PROVIDERS` | optional | Comma-separated streaming services to offer (`netflix`, `prime`, `disney`). Parsed once in `LoadConfig`: trimmed, case-insensitive, empty entries skipped, unknown names logged and ignored. Defaults to all three; inert without `TMDB_READ_TOKEN`. |
+| `STREAMING_PROVIDERS` | optional | Comma-separated streaming services to offer, by provider name **or numeric TMDB provider id**. Any TMDB watch provider is accepted, not a fixed set. Normalized in `LoadConfig` (trimmed, lowercased, de-duplicated) and resolved in `New` via `resolveStreamingProviders`. Defaults to `netflix,prime,disney`; inert without `TMDB_READ_TOKEN`. |
+| `TMDB_WATCH_REGION` | optional | ISO 3166-1 region for provider resolution and every Discover query. Defaults to `US`. |
 
 ¹ At least one movie source is required: Jellyfin (`JELLYFIN_URL` **and**
 `JELLYFIN_API_KEY`), streaming (`TMDB_READ_TOKEN`), or both. `Config.JellyfinConfigured`
