@@ -1,4 +1,5 @@
 import type { Availability } from '../api'
+import { accentStyle } from '../sourceColor'
 
 interface SourceBadgesProps {
     availability: Availability[] | undefined
@@ -17,7 +18,7 @@ export default function SourceBadges({ availability, className }: SourceBadgesPr
     return (
         <ul className={`source-badges${className ? ' ' + className : ''}`}>
             {availability.map((a) => (
-                <li key={a.source} className={`source-badge source-badge-${a.source}`}>
+                <li key={a.source} className="source-badge" style={accentStyle(a.source)}>
                     {a.label || a.source}
                 </li>
             ))}

@@ -119,21 +119,20 @@
     width: 100%;
 }
 
-/* Source picker: reuses .chip, adding a per-service accent when selected so
-   familiar options are distinguishable at a glance. These accents are optional
-   decoration only — the source set is open (any TMDB watch provider can be
-   configured), and a service with no rule here still renders correctly from
-   .chip.checked, just without a brand color. */
+/* Source picker: reuses .chip, adding a per-service accent when selected so the
+   options are distinguishable at a glance. The accent arrives as the
+   --source-accent custom property (see sourceColor.ts) rather than a rule per
+   service: the source set is open, so every provider gets a color without any
+   of them needing an entry here. */
 .source-picker legend {
     font-size: 0.9rem;
     opacity: 0.8;
     padding-bottom: 0.25rem;
 }
 
-.source-chip-jellyfin.checked { border-color: #00a4dc; }
-.source-chip-netflix.checked { border-color: #e50914; }
-.source-chip-prime.checked { border-color: #00a8e1; }
-.source-chip-disney.checked { border-color: #113ccf; }
+.source-chip.checked {
+    border-color: var(--source-accent, var(--chip-fill));
+}
 
 .unwatched-toggle.disabled {
     opacity: 0.5;

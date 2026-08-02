@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getAvailableFilters, getPreview, warmLibrary, type AvailableFilters, type PreviewFilters, type PreviewResponse, type SourceDescriptor, type SourceID } from '../api'
 import { useSessionStore } from '../store'
+import { accentStyle } from '../sourceColor'
 import '../styles/admin.css'
 
 const RATING_ORDER: Record<string, number> = {
@@ -188,7 +189,8 @@ export default function HostSetup() {
                 {offeredSources.map((s) => (
                     <label
                         key={s.id}
-                        className={`chip source-chip source-chip-${s.id} ${sources.includes(s.id) ? 'checked' : ''}`}
+                        className={`chip source-chip ${sources.includes(s.id) ? 'checked' : ''}`}
+                        style={accentStyle(s.id)}
                     >
                         <input
                             type="checkbox"

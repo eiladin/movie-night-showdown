@@ -193,17 +193,15 @@ select:focus {
     padding: 0;
 }
 
+/* The accent arrives as --source-accent from sourceColor.ts, so every provider
+   is colored without needing a rule per service, and currentColor drives both
+   the text and the border. */
 .source-badge {
     font-size: 0.72rem;
     line-height: 1;
     padding: 0.25rem 0.5rem;
     border-radius: 999px;
+    color: var(--source-accent, inherit);
     border: 1px solid currentColor;
     white-space: nowrap;
 }
-
-/* Optional brand accents; unlisted sources fall back to the default color. */
-.source-badge-jellyfin { color: #00a4dc; }
-.source-badge-netflix { color: #e50914; }
-.source-badge-prime { color: #00a8e1; }
-.source-badge-disney { color: #4f7cff; }

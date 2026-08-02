@@ -34,8 +34,11 @@ export default function Result({ socket }: ResultProps) {
                     <img src={winner.posterURL} alt={winner.title} />
                     <div className="winner-meta">
                         <h2>{winner.title}</h2>
-                        <p>{winner.year} · {winner.genres?.join(', ')}</p>
+                        {/* Where to watch it sits directly under the title:
+                            it is the one thing this screen exists to answer,
+                            so it must not sit below the wrappable metadata. */}
                         <SourceBadges availability={winner.availability} />
+                        <p>{winner.year} · {winner.genres?.join(', ')}</p>
                     </div>
                 </div>
                 <button type="button" className="result-home-btn" onClick={() => navigate('/')}>Back to home</button>

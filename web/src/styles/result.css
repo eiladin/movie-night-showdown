@@ -9,15 +9,25 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  /* "safe" centering: centers while the content fits, and falls back to
+     start-alignment when it does not. Plain `center` pushes overflow off the
+     top of a fixed container, where it cannot be scrolled to. */
+  justify-content: safe center;
+  /* Nothing on this screen may become unreachable. A long title wraps to three
+     lines and grows the card past the viewport; without this the badges saying
+     where to watch the film scroll off into nowhere. */
+  overflow-y: auto;
   z-index: 1000;
-  padding: 2rem;
+  padding: 1.5rem 1rem;
   text-align: center;
 }
 
 .result-screen h1 {
-  font-size: 2.5rem;
-  margin-bottom: 2rem;
+  /* Scales down on a phone so the headline never eats the room the card and
+     its badges need. */
+  font-size: clamp(1.75rem, 7vw, 2.5rem);
+  margin: 0 0 1.25rem;
+  flex: none;
   color: #ff5e7e;
   text-shadow: 0 2px 10px rgba(255, 94, 126, 0.4);
 }
@@ -29,6 +39,11 @@
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   max-width: 400px;
   width: 100%;
+  /* The card is a column whose poster absorbs any squeeze, so the metadata
+     below it stays on screen no matter how far the title wraps. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .winner-card img {
@@ -36,15 +51,23 @@
   aspect-ratio: 2/3;
   object-fit: cover;
   display: block;
+  /* Shrinkable, and allowed below its content size; the crop is preferable to
+     pushing the title and badges out of view. */
+  flex: 1 1 auto;
+  min-height: 6rem;
 }
 
 .winner-meta {
-  padding: 1.5rem;
+  padding: 1.25rem;
+  /* Never shrinks: this is the part worth reading. */
+  flex: none;
 }
 
 .winner-meta h2 {
   margin: 0 0 0.5rem 0;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
+  /* A single very long word must wrap rather than widen the card. */
+  overflow-wrap: break-word;
 }
 
 .winner-meta p {
@@ -64,7 +87,10 @@
   margin: 0;
   width: 100%;
   max-width: 500px;
-  flex: 1;
+  flex: 1 1 auto;
+  /* Without this the list refuses to shrink below its content height, so it
+     never scrolls and the rows at the bottom become unreachable. */
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -92,16 +118,23 @@
   height: 90px;
   object-fit: cover;
   display: block;
+  /* A wrapping title grows the row; the thumbnail must not be squeezed
+     narrower to pay for it. */
+  flex: none;
 }
 
 .leaderboard-meta {
   padding: 1rem;
   text-align: left;
+  /* Lets the text column shrink so long titles wrap inside the row instead of
+     widening it past the viewport. */
+  min-width: 0;
 }
 
 .leaderboard-meta h3 {
   margin: 0 0 0.25rem 0;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
+  overflow-wrap: break-word;
 }
 
 .leaderboard-meta p {
@@ -129,8 +162,13 @@
 }
 
 /* The badge rules themselves live in index.css; these only adjust spacing for
-   the winner card and leaderboard rows. */
-.winner-meta .source-badges,
+   the winner card and leaderboard rows. On the winner card the badges sit
+   between the title and the year/genre line, so they carry a bottom margin
+   rather than a top one. */
+.winner-meta .source-badges {
+    margin: 0 0 0.5rem;
+}
+
 .leaderboard-meta .source-badges {
     margin-top: 0.5rem;
 }
