@@ -74,6 +74,11 @@ hand-curated and is not touched by this pipeline.
   on the source list, `Availability.Label` on each card. `knownProviders` in
   `server/providers.go` is an offline shortcut and a pin for the ids this app
   shipped with — never a limit on what can be configured.
+- **Only the host's filter picks are persisted client-side.** `web/src/store.ts`
+  persists `filtersByCode` (keyed by session code, capped at 5 entries) to
+  localStorage and nothing else. Every other field is server-derived and must be
+  re-fetched on reconnect; persisting a deck or roster would restore state the
+  session disagrees with.
 - **Jellyfin is optional.** It is one source among peers and is registered only
   when its credentials are set. Code must not assume it exists: filter options
   fall back to `defaultAvailableFilters()` without it, and `selectSources` falls

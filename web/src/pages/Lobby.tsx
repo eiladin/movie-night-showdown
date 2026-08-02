@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import QRJoin from '../components/QRJoin'
-import { useSessionStore } from '../store'
+import { useFiltersFor, useSessionStore } from '../store'
 import {
     SessionSocket,
     type DeckPayload,
@@ -26,7 +26,7 @@ export default function Lobby() {
     const status = useSessionStore((s) => s.status)
     const participants = useSessionStore((s) => s.participants)
     const myParticipantId = useSessionStore((s) => s.myParticipantId)
-    const filters = useSessionStore((s) => s.filters)
+    const filters = useFiltersFor(upperCode)
     const applySessionState = useSessionStore((s) => s.applySessionState)
     const setParticipants = useSessionStore((s) => s.setParticipants)
     const setDeck = useSessionStore((s) => s.setDeck)

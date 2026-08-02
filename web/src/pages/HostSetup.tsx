@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getAvailableFilters, getPreview, warmLibrary, type AvailableFilters, type PreviewFilters, type PreviewResponse, type SourceDescriptor, type SourceID } from '../api'
-import { useSessionStore } from '../store'
+import { useFiltersFor, useSessionStore } from '../store'
 import { accentStyle } from '../sourceColor'
 import '../styles/admin.css'
 
@@ -39,14 +39,24 @@ function sortGenres(genres: string[]): string[] {
 // here with a session already created (the code comes from the ?code= query
 // param), picks filters, previews the matching library, and proceeds to the
 // lobby.
+//
+// The form is keyed by session code. Navigating from one session's setup to
+// another's changes only the query param, so React Router keeps this component
+// mounted and the useState initializers below never re-run — the previous
+// session's picks would stay on screen. The key forces a remount instead.
 export default function HostSetup() {
     const [searchParams] = useSearchParams()
     const sessionCode = searchParams.get('code')
+    return <HostSetupForm key={sessionCode ?? ''} sessionCode={sessionCode} />
+}
+
+function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
     const setFilters = useSessionStore((s) => s.setFilters)
-    // Seed from whatever was last carried to the lobby, so arriving here via
-    // "Change filters" shows the previous selection rather than a blank form.
+    // Seed from what was last chosen *for this session*, so arriving here via
+    // "Change filters" shows the previous selection while a newly created
+    // session starts blank rather than inheriting the last one's picks.
     // Only read on the first render; these are uncontrolled from here on.
-    const saved = useSessionStore((s) => s.filters)
+    const saved = useFiltersFor(sessionCode)
 
     const [genres, setGenres] = useState<string[]>(saved.genres ?? [])
     const [yearMin, setYearMin] = useState(saved.yearMin ? String(saved.yearMin) : '')
@@ -164,9 +174,10 @@ export default function HostSetup() {
 
     // Carry the chosen filters over to the Lobby, where "Begin" sends them in
     // host:start. Filters live in the shared session store rather than the
-    // URL since they can include an arbitrary list of genres.
+    // URL since they can include an arbitrary list of genres, and are stored
+    // under this session's code so they never reach a different session.
     function handleGoToLobby() {
-        setFilters(currentFilters())
+        if (sessionCode) setFilters(sessionCode, currentFilters())
         // Warm the poster cache during the lobby-fill window (fire-and-forget;
         // must never block entering the lobby).
         warmLibrary(currentFilters()).catch((err) =>
