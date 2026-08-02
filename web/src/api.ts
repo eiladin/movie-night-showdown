@@ -98,6 +98,25 @@ export async function getAvailableFilters(): Promise<AvailableFilters> {
     return res.json() as Promise<AvailableFilters>
 }
 
+// SetupStatus mirrors server.setupResponse (see server/setup.go). It reports
+// only what this deployment is able to do; it never carries a credential.
+export interface SetupStatus {
+    // configured is false when no source can be queried at all, which is the
+    // state of a fresh install.
+    configured: boolean
+    jellyfin: boolean
+    streaming: boolean
+    sources: SourceID[]
+}
+
+export async function getSetupStatus(): Promise<SetupStatus> {
+    const res = await fetch('/api/setup')
+    if (!res.ok) {
+        throw new Error(`setup request failed: ${res.status} ${res.statusText}`)
+    }
+    return res.json() as Promise<SetupStatus>
+}
+
 // CreateSessionResponse mirrors server.createSessionResponse (see
 // server/session.go).
 export interface CreateSessionResponse {

@@ -32,10 +32,15 @@ func New(cfg Config) *Server {
 		store:    NewStore(ttl),
 		cache:    newPosterCache(cfg.CacheDir),
 	}
-	s.fetchers = map[SourceID]PosterFetcher{
-		SourceJellyfin: s.jellyfin,
+	// Jellyfin is gated on its credentials exactly like the streaming sources.
+	// Registering it unconditionally would advertise a source every query fails
+	// against, which is what a streaming-only deployment would otherwise show.
+	s.fetchers = map[SourceID]PosterFetcher{}
+	s.sources = map[SourceID]MovieSource{}
+	if cfg.JellyfinConfigured() {
+		s.fetchers[SourceJellyfin] = s.jellyfin
+		s.sources[SourceJellyfin] = s.jellyfin
 	}
-	s.sources = map[SourceID]MovieSource{SourceJellyfin: s.jellyfin}
 	// NewTMDBSource returns nil without a read token, so an unset
 	// TMDB_READ_TOKEN leaves s.sources Jellyfin-only and the streaming sources
 	// are never advertised to clients.
@@ -45,6 +50,12 @@ func New(cfg Config) *Server {
 			s.fetchers[id] = src
 		}
 	}
+	if len(s.sources) == 0 {
+		log.Print("server: no movie source is configured — set JELLYFIN_URL and " +
+			"JELLYFIN_API_KEY for a local library, and/or TMDB_READ_TOKEN for " +
+			"streaming services. Open the app for setup instructions.")
+	}
+
 	s.routes()
 	return s
 }
@@ -59,6 +70,7 @@ func (s *Server) SetBuildInfo(version, commit string) {
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /healthz", s.handleHealth)
+	s.mux.HandleFunc("GET /api/setup", s.handleSetup)
 	s.mux.HandleFunc("GET /api/library/preview", s.handleLibraryPreview)
 	s.mux.HandleFunc("GET /api/library/filters", s.handleLibraryFilters)
 	s.mux.HandleFunc("POST /api/library/warm", s.handleLibraryWarm)

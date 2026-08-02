@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -80,11 +81,35 @@ var tmdbGenreIDs = map[string]int{
 	"Western":          37,
 }
 
-// tmdbCertifications is the set of US certifications TMDB recognizes. A
-// Jellyfin OfficialRating outside this set is dropped from the streaming query
-// rather than being approximated.
-var tmdbCertifications = map[string]bool{
-	"G": true, "PG": true, "PG-13": true, "R": true, "NC-17": true, "NR": true,
+// tmdbCertificationOrder lists the US certifications TMDB recognizes, from
+// most to least permissive. The order is what the picker offers when there is
+// no Jellyfin library to enumerate.
+var tmdbCertificationOrder = []string{"G", "PG", "PG-13", "R", "NC-17", "NR"}
+
+// tmdbCertifications is the set form of tmdbCertificationOrder. A Jellyfin
+// OfficialRating outside this set is dropped from the streaming query rather
+// than being approximated.
+var tmdbCertifications = func() map[string]bool {
+	m := make(map[string]bool, len(tmdbCertificationOrder))
+	for _, c := range tmdbCertificationOrder {
+		m[c] = true
+	}
+	return m
+}()
+
+// defaultAvailableFilters is the filter vocabulary offered when there is no
+// Jellyfin library to enumerate — a streaming-only deployment. It is derived
+// from the TMDB maps rather than hand-written, so the picker can only offer
+// values a streaming query actually honors.
+func defaultAvailableFilters() AvailableFilters {
+	genres := make([]string, 0, len(tmdbGenreNames))
+	for _, name := range tmdbGenreNames {
+		genres = append(genres, name)
+	}
+	sort.Strings(genres)
+	ratings := make([]string, len(tmdbCertificationOrder))
+	copy(ratings, tmdbCertificationOrder)
+	return AvailableFilters{Genres: genres, OfficialRatings: ratings}
 }
 
 // TMDBSource queries one streaming provider's catalog through TMDB's Discover

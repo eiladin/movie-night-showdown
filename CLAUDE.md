@@ -68,6 +68,10 @@ hand-curated and is not touched by this pipeline.
   sources this deployment can query (`configuredSources` in `server/sources.go`),
   and the frontend renders exactly that list. Do not add a client-side list of
   streaming sources or duplicate the credential gating in the UI.
+- **Jellyfin is optional.** It is one source among peers and is registered only
+  when its credentials are set. Code must not assume it exists: filter options
+  fall back to `defaultAvailableFilters()` without it, and `selectSources` falls
+  back to the first configured source rather than to Jellyfin.
 - The docs (`CLAUDE.md`, `README.md`, `docs/*`) are written in a neutral,
   professional voice, since they are read by other agents and humans.
 
@@ -75,12 +79,18 @@ hand-curated and is not touched by this pipeline.
 
 | Var | Required | Purpose |
 |---|---|---|
-| `JELLYFIN_URL` | yes | Base URL of the Jellyfin server |
-| `JELLYFIN_API_KEY` | yes | Jellyfin API key (stays server-side, never sent to clients) |
+| `JELLYFIN_URL` | one of¹ | Base URL of the Jellyfin server |
+| `JELLYFIN_API_KEY` | one of¹ | Jellyfin API key (stays server-side, never sent to clients) |
 | `JELLYFIN_USER_ID` | optional | Needed for "unwatched" filtering |
 | `PUBLIC_URL` | yes | Base URL used to build QR/join links |
 | `PORT` | optional | Listen port (default 8080) |
 | `SESSION_TTL` | optional | Session expiry (default a few hours) |
 | `CACHE_DIR` | optional | Directory for the on-disk poster cache (default a temp dir); mount a volume in Docker to persist it across restarts |
-| `TMDB_READ_TOKEN` | optional | TMDB v4 API Read Access Token. Enables streaming services as sources. When unset, the server registers no streaming source, so the API does not advertise them and the UI does not render them. Stays server-side, never sent to clients. |
+| `TMDB_READ_TOKEN` | one of¹ | TMDB v4 API Read Access Token. Enables streaming services as sources. When unset, the server registers no streaming source, so the API does not advertise them and the UI does not render them. Stays server-side, never sent to clients. |
 | `STREAMING_PROVIDERS` | optional | Comma-separated streaming services to offer (`netflix`, `prime`, `disney`). Parsed once in `LoadConfig`: trimmed, case-insensitive, empty entries skipped, unknown names logged and ignored. Defaults to all three; inert without `TMDB_READ_TOKEN`. |
+
+¹ At least one movie source is required: Jellyfin (`JELLYFIN_URL` **and**
+`JELLYFIN_API_KEY`), streaming (`TMDB_READ_TOKEN`), or both. `Config.JellyfinConfigured`
+and `Config.StreamingConfigured` are the predicates. With neither set, `New`
+registers no source, logs what is missing, and every client route redirects to
+the in-app `/setup` guide (`server/setup.go`, `web/src/pages/Setup.tsx`).

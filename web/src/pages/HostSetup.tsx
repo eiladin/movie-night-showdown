@@ -64,7 +64,9 @@ export default function HostSetup() {
     const [yearMax, setYearMax] = useState(saved.yearMax ? String(saved.yearMax) : '')
     const [officialRatings, setOfficialRatings] = useState<string[]>(saved.officialRatings ?? [])
     const [unwatched, setUnwatched] = useState(saved.unwatched ?? false)
-    const [sources, setSources] = useState<SourceID[]>(saved.sources ?? ['jellyfin'])
+    // Starts empty rather than assuming Jellyfin: which sources exist is the
+    // server's answer, and it reconciles this below once it arrives.
+    const [sources, setSources] = useState<SourceID[]>(saved.sources ?? [])
     const [preview, setPreview] = useState<PreviewResponse | null>(null)
     const [available, setAvailable] = useState<AvailableFilters | null>(null)
     // Distinguishes "no answer yet" from "answered, and the answer was an
@@ -87,18 +89,25 @@ export default function HostSetup() {
                 // A source the server cannot query must not survive in state:
                 // it would ship in host:start and be dropped silently, and it
                 // renders no chip, so the host could never clear it.
+                //
+                // Falling back to the first configured source rather than to
+                // Jellyfin: a streaming-only deployment has no Jellyfin to
+                // select, and a hardcoded fallback would leave the picker
+                // holding a source the server cannot query.
                 setSources((current) => {
                     const allowed = current.filter((id) => configured.includes(id))
-                    return allowed.length > 0 ? allowed : ['jellyfin']
+                    if (allowed.length > 0) return allowed
+                    return configured.length > 0 ? [configured[0]] : []
                 })
                 setSourcesLoaded(true)
             })
             .catch((err) => {
                 console.error('Failed to load available filters:', err)
-                setError('Could not load filter options from Jellyfin.')
-                // The question has been answered, badly. Fall back to Jellyfin
-                // rather than leaving every source selectable on no information.
-                setSources(['jellyfin'])
+                setError('Could not load filter options.')
+                // The question has been answered, badly. Leave the selection
+                // alone rather than asserting a source on no information; the
+                // server falls back to its first configured source.
+                setSources([])
                 setSourcesLoaded(true)
             })
     }, [])
@@ -111,19 +120,15 @@ export default function HostSetup() {
         setOfficialRatings((prev) => (prev.includes(rating) ? prev.filter((r) => r !== rating) : [...prev, rating]))
     }
 
-    // Three states, three answers:
-    //   loading           -> Jellyfin alone, which every deployment configures
-    //   loaded, succeeded -> exactly what the server reported
-    //   loaded, failed    -> Jellyfin alone again
-    // Rendering only these means an unconfigured source never appears, rather
-    // than appearing greyed out.
-    const offeredSources: SourceID[] =
-        sourcesLoaded && available ? available.sources : ['jellyfin']
+    // Render exactly what the server reported, and nothing before it answers.
+    // An unconfigured source never appears at all, rather than appearing greyed
+    // out, and no chip flashes on the way to a deployment that lacks it.
+    const offeredSources: SourceID[] = sourcesLoaded && available ? available.sources : []
 
     // Nothing beyond the local library is on offer, so point the host at what
     // would unlock the rest.
     const streamingUnavailable =
-        sourcesLoaded && offeredSources.every((id) => id === 'jellyfin')
+        sourcesLoaded && available !== null && offeredSources.every((id) => id === 'jellyfin')
 
     // At least one source must stay selected: a session with no source has no
     // deck to deal.

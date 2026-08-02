@@ -6,10 +6,13 @@ services:
     volumes:
       - poster-cache:/var/cache/mns
     environment:
-      JELLYFIN_URL: ${JELLYFIN_URL}
-      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY}
+      # At least one source is required: Jellyfin, TMDB, or both. With none set
+      # the app serves its /setup guide and explains what is missing.
+      JELLYFIN_URL: ${JELLYFIN_URL:-}
+      JELLYFIN_API_KEY: ${JELLYFIN_API_KEY:-}
       JELLYFIN_USER_ID: ${JELLYFIN_USER_ID:-}
       TMDB_READ_TOKEN: ${TMDB_READ_TOKEN:-}
+      STREAMING_PROVIDERS: ${STREAMING_PROVIDERS:-}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:8080}
       PORT: "8080"
       SESSION_TTL: ${SESSION_TTL:-4h}

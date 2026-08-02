@@ -1,16 +1,24 @@
 # Installing Movie Night Showdown
 
 This guide gets you from zero to a running showdown with Docker Compose. It
-assumes you already have a Jellyfin server and a machine that can run Docker on
-the same network.
+assumes a machine that can run Docker, and at least one place to get movies from.
 
 ## What you need first
 
 - **Docker** with the Compose plugin (`docker compose version` should work).
-- **A Jellyfin server** reachable from wherever you run this — a URL like
-  `http://jellyfin.local:8096`.
-- **A Jellyfin API key** (created below). The app uses it server-side to read
-  your library and fetch posters; it is never sent to the people swiping.
+- **At least one movie source.** The app needs one of these; both is better:
+  - **A Jellyfin server** reachable from wherever you run this — a URL like
+    `http://jellyfin.local:8096` — plus **a Jellyfin API key** (created below).
+    The app uses the key server-side to read your library and fetch posters; it
+    is never sent to the people swiping.
+  - **A TMDB API read token**, which lets the app draw from streaming services
+    instead of (or alongside) a local library. See
+    [Streaming services](#streaming-services).
+
+If you start the app with neither configured, it says so: the log prints what is
+missing, and the app itself redirects to a `/setup` page listing the environment
+variables for each option. Nothing else works until one is set, since there
+would be no movies to deal.
 
 ### Getting a Jellyfin API key
 
@@ -94,15 +102,20 @@ Everything is configured through environment variables.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `JELLYFIN_URL` | yes | Base URL of your Jellyfin server. |
-| `JELLYFIN_API_KEY` | yes | Jellyfin API key. Stays server-side; never sent to clients. |
+| `JELLYFIN_URL` | one of¹ | Base URL of your Jellyfin server. |
+| `JELLYFIN_API_KEY` | one of¹ | Jellyfin API key. Stays server-side; never sent to clients. |
 | `JELLYFIN_USER_ID` | no | Needed for the "unwatched only" filter. |
-| `TMDB_READ_TOKEN` | no | TMDB v4 API Read Access Token. Unlocks streaming services as sources; without it only Jellyfin is offered. Stays server-side; never sent to clients. See [Streaming services](#streaming-services). |
+| `TMDB_READ_TOKEN` | one of¹ | TMDB v4 API Read Access Token. Unlocks streaming services as sources; without it only Jellyfin is offered. Stays server-side; never sent to clients. See [Streaming services](#streaming-services). |
 | `STREAMING_PROVIDERS` | no | Comma-separated list of streaming services to offer. Defaults to `netflix,prime,disney`. Ignored when `TMDB_READ_TOKEN` is unset. See [Streaming services](#streaming-services). |
 | `PUBLIC_URL` | yes | The URL people use to reach the app. Used to build the join links and QR codes, so it must be reachable from their devices. |
 | `PORT` | no | Port the app listens on. Defaults to `8080`. |
 | `SESSION_TTL` | no | How long an idle session survives. Defaults to a few hours (`4h`). |
 | `CACHE_DIR` | no | Where posters are cached on disk. Mount a volume here to keep the cache across restarts. |
+
+¹ The app needs at least one movie source. Set `JELLYFIN_URL` **and**
+`JELLYFIN_API_KEY` for a local library, or `TMDB_READ_TOKEN` for streaming
+services, or all three for both. With none of them set, the app serves only its
+`/setup` page.
 
 The one that trips people up is `PUBLIC_URL`. It's the address the *phones* use,
 not the address the container uses internally. If your guests reach the app at
@@ -127,6 +140,20 @@ browsers.
 When the token is unset, the app does not advertise streaming sources at all:
 the API reports only Jellyfin, and the source picker shows only Jellyfin along
 with a short note about enabling the rest.
+
+### Running without a Jellyfin library
+
+A TMDB token alone is enough: leave `JELLYFIN_URL` and `JELLYFIN_API_KEY` unset
+and the deck is built entirely from streaming catalogs. Two differences from a
+deployment that has a library:
+
+- **Filter options are a fixed list.** With a library, the genre and rating
+  chips are enumerated from what is actually on your shelf. A streaming catalog
+  is far too large to enumerate, so the picker offers a default vocabulary
+  instead — the 19 genres and the six US certifications (`G`, `PG`, `PG-13`,
+  `R`, `NC-17`, `NR`) that a streaming query can honor.
+- **"Unwatched only" is unavailable.** It reads a Jellyfin user's play state and
+  has no meaning for a streaming catalog.
 
 ### Choosing which services to offer
 

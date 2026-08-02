@@ -93,6 +93,20 @@ func LoadConfig() Config {
 	return cfg
 }
 
+// JellyfinConfigured reports whether this deployment can query Jellyfin. Both
+// values are needed: a URL without a key cannot authenticate, and a key without
+// a URL has nowhere to go.
+func (c Config) JellyfinConfigured() bool {
+	return c.JellyfinURL != "" && c.JellyfinAPIKey != ""
+}
+
+// StreamingConfigured reports whether this deployment can query any streaming
+// service. Every streaming source goes through TMDB, so the token is required;
+// STREAMING_PROVIDERS can also narrow the list to nothing.
+func (c Config) StreamingConfigured() bool {
+	return c.TMDBReadToken != "" && len(c.StreamingProviders) > 0
+}
+
 // String renders the config for logging with the API key masked.
 func (c Config) String() string {
 	masked := "(unset)"

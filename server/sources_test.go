@@ -208,3 +208,54 @@ func TestServerEnumerationHonoursStreamingProviders(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+// With no Jellyfin library, the empty-selection fallback must pick the first
+// configured source rather than returning nothing to deal.
+func TestSelectSourcesFallsBackToFirstConfiguredWithoutJellyfin(t *testing.T) {
+	available := map[SourceID]MovieSource{
+		SourceDisney: &fakeSource{id: SourceDisney},
+		SourcePrime:  &fakeSource{id: SourcePrime},
+	}
+
+	got := selectSources(available, nil)
+
+	if len(got) != 1 || got[0].ID() != SourcePrime {
+		t.Fatalf("got %v, want [prime]", got)
+	}
+}
+
+// Jellyfin still wins the fallback when this deployment has it.
+func TestSelectSourcesFallbackPrefersJellyfin(t *testing.T) {
+	available := map[SourceID]MovieSource{
+		SourceDisney:   &fakeSource{id: SourceDisney},
+		SourceJellyfin: &fakeSource{id: SourceJellyfin},
+	}
+
+	got := selectSources(available, []SourceID{"hulu"})
+
+	if len(got) != 1 || got[0].ID() != SourceJellyfin {
+		t.Fatalf("got %v, want [jellyfin]", got)
+	}
+}
+
+// With nothing configured there is no fallback to make.
+func TestSelectSourcesReturnsNoneWhenNothingConfigured(t *testing.T) {
+	got := selectSources(map[SourceID]MovieSource{}, []SourceID{SourceJellyfin})
+
+	if len(got) != 0 {
+		t.Fatalf("got %v, want none", got)
+	}
+}
+
+// Jellyfin without credentials must not be registered, so a fresh install
+// advertises no source at all.
+func TestServerRegistersNoSourcesWhenNothingConfigured(t *testing.T) {
+	cfg := Config{Port: "8080", SessionTTL: "4h", CacheDir: t.TempDir(),
+		StreamingProviders: defaultStreamingProviders}
+
+	got := configuredSources(New(cfg).sources)
+
+	if len(got) != 0 {
+		t.Fatalf("got %v, want none", got)
+	}
+}

@@ -52,14 +52,23 @@ type libraryFiltersResponse struct {
 	Sources []SourceID `json:"sources"`
 }
 
-// handleLibraryFilters fetches the available filter options (genres, ratings)
-// from the Jellyfin library.
+// handleLibraryFilters returns the available filter options (genres, ratings).
+// With a Jellyfin library they are enumerated from it, so the picker offers
+// exactly what is on the shelf. Without one — a streaming-only deployment —
+// they fall back to the default vocabulary, since a TMDB catalog is far too
+// large to enumerate and the picker would otherwise be empty.
 func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
-	filters, err := s.jellyfin.GetAvailableFilters(r.Context())
-	if err != nil {
-		log.Printf("library filters: %v", err)
-		http.Error(w, "failed to fetch available filters from Jellyfin", http.StatusBadGateway)
-		return
+	var filters AvailableFilters
+	if s.cfg.JellyfinConfigured() {
+		var err error
+		filters, err = s.jellyfin.GetAvailableFilters(r.Context())
+		if err != nil {
+			log.Printf("library filters: %v", err)
+			http.Error(w, "failed to fetch available filters from Jellyfin", http.StatusBadGateway)
+			return
+		}
+	} else {
+		filters = defaultAvailableFilters()
 	}
 
 	w.Header().Set("Content-Type", "application/json")

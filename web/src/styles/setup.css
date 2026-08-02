@@ -1,0 +1,94 @@
+.setup-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.setup-page h1 {
+  margin: 0 0 8px;
+}
+
+.setup-lede {
+  margin: 0 0 20px;
+  opacity: 0.85;
+}
+
+/* What this deployment currently has, so the reader can tell which of the
+   options below they still need. */
+.setup-status {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.setup-status .ok::before {
+  content: '✓ ';
+  color: #3fa45b;
+}
+
+.setup-status .missing::before {
+  content: '• ';
+  opacity: 0.6;
+}
+
+.setup-status .missing {
+  opacity: 0.75;
+}
+
+.setup-option {
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 0 0 16px;
+  background-color: var(--social-bg);
+}
+
+.setup-option.recommended {
+  border-color: #00a4dc;
+}
+
+.setup-option h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.setup-option p {
+  margin: 0 0 12px;
+}
+
+.setup-badge {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background-color: #00a4dc;
+  color: #fff;
+}
+
+.setup-option pre {
+  overflow-x: auto;
+  margin: 0 0 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: rgba(127, 127, 127, 0.12);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.setup-note {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.setup-footer {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
