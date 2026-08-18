@@ -3,7 +3,7 @@
 # target architecture. Without the pin, buildx runs this stage once per platform
 # and the non-native pass runs npm under QEMU emulation to produce byte-identical
 # output.
-FROM --platform=$BUILDPLATFORM node:25-alpine AS web
+FROM --platform=$BUILDPLATFORM node:26-alpine AS web
 WORKDIR /web
 COPY web/package*.json ./
 RUN npm ci
