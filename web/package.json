@@ -12,12 +12,12 @@
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
-    "motion": "^12.43.0",
+    "motion": "^13.1.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-qr-code": "^2.2.0",
     "react-router": "^8.3.0",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^7.0.1",
