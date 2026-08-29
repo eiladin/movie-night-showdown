@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -290,7 +291,7 @@ func TestDuplicateLibraryNameResolvesDeterministically(t *testing.T) {
 	]}`
 	for i := 0; i < 3; i++ {
 		stub := newMediaFolderStub(t, sameName, 0)
-		got, err := resolveLibraryNames(context.Background(),
+		got, _, err := resolveLibraryNames(context.Background(),
 			Config{JellyfinURL: stub.URL, JellyfinAPIKey: "k"},
 			SourceJellyfin, []libraryRef{{ID: "Movies"}})
 		if err != nil {
@@ -305,12 +306,14 @@ func TestDuplicateLibraryNameResolvesDeterministically(t *testing.T) {
 	}
 }
 
-// A name that matches nothing is a configuration error, not a transient one. It is
-// dropped with a log line rather than failing the whole resolution, so a typo in
-// one library name does not cost the ones spelled correctly.
-func TestUnknownLibraryNameIsDroppedNotFatal(t *testing.T) {
+// A name that matches nothing is a configuration error, not a transient one. It
+// registers no source rather than failing the whole resolution, so a typo in one
+// library name does not cost the ones spelled correctly — and it is returned as
+// unmatched so the host can be told, instead of seeing a short picker and
+// guessing.
+func TestUnknownLibraryNameIsReportedNotFatal(t *testing.T) {
 	stub := newMediaFolderStub(t, twoMovieFolders, 0)
-	got, err := resolveLibraryNames(context.Background(),
+	got, unmatched, err := resolveLibraryNames(context.Background(),
 		Config{JellyfinURL: stub.URL, JellyfinAPIKey: "k"},
 		SourceJellyfin, []libraryRef{{ID: "Movies"}, {ID: "Nonexistent"}})
 	if err != nil {
@@ -319,6 +322,9 @@ func TestUnknownLibraryNameIsDroppedNotFatal(t *testing.T) {
 	if len(got) != 1 || got[0].ID != jfLibA {
 		t.Errorf("resolved to %+v, want only the library that exists", got)
 	}
+	if !slices.Equal(unmatched, []string{"Nonexistent"}) {
+		t.Errorf("unmatched = %v, want [Nonexistent]", unmatched)
+	}
 }
 
 // Names are matched case-insensitively, which is the one place folding case is
@@ -326,7 +332,7 @@ func TestUnknownLibraryNameIsDroppedNotFatal(t *testing.T) {
 // identifiers.
 func TestLibraryNameMatchingFoldsCase(t *testing.T) {
 	stub := newMediaFolderStub(t, twoMovieFolders, 0)
-	got, err := resolveLibraryNames(context.Background(),
+	got, _, err := resolveLibraryNames(context.Background(),
 		Config{JellyfinURL: stub.URL, JellyfinAPIKey: "k"},
 		SourceJellyfin, []libraryRef{{ID: "  kids MOVIES "}})
 	if err != nil {

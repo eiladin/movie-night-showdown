@@ -1,4 +1,4 @@
-import type { Movie } from './api'
+import type { Movie, SourceProblem } from './api'
 import type { Participant, Status } from './store'
 
 // Envelope mirrors server.Envelope (see server/messages.go).
@@ -61,12 +61,12 @@ export interface ErrorPayload {
 }
 
 // WarningPayload is a non-fatal notice sent by the server on partial source
-// failure at host:start. No client renders it: both failure modes it covers are
-// surfaced on the host setup page before a room exists. Kept because it is part
-// of the wire protocol.
+// failure at host:start: the deck was dealt, from fewer sources than the host
+// selected. The Lobby subscribes to it and renders `problems` itself; `message`
+// is the server's plain-text fallback and is not displayed.
 export interface WarningPayload {
     message: string
-    sources?: string[]
+    problems?: SourceProblem[]
 }
 
 type Listener = (payload: unknown) => void

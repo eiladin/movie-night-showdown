@@ -14,7 +14,7 @@ var errAllSourcesFailed = errors.New("every selected source failed")
 
 // sourceResult is one source's contribution to the shoe, or its failure.
 type sourceResult struct {
-	source SourceID
+	source MovieSource
 	movies []Movie
 	err    error
 }
@@ -91,7 +91,7 @@ type SourceDescriptor struct {
 }
 
 // gatherVocabulary unions the filter values of every selected source, returning
-// the merged vocabulary and the ids of any source that failed.
+// the merged vocabulary and a problem for any source that failed.
 //
 // The union is deliberate: a value only one selected source recognizes is still
 // worth offering, because selecting it yields that source's matches rather than
@@ -106,9 +106,9 @@ type SourceDescriptor struct {
 // Partial failure degrades like gatherShoe: a picker missing one source's
 // values beats a picker that renders nothing. An error is returned only when
 // every source failed.
-func gatherVocabulary(ctx context.Context, sources []MovieSource) (AvailableFilters, []SourceID, error) {
+func gatherVocabulary(ctx context.Context, sources []MovieSource) (AvailableFilters, []SourceProblem, error) {
 	type result struct {
-		id      SourceID
+		src     MovieSource
 		filters AvailableFilters
 		err     error
 	}
@@ -119,27 +119,27 @@ func gatherVocabulary(ctx context.Context, sources []MovieSource) (AvailableFilt
 		if !ok {
 			// Not a failure: a source with no vocabulary simply contributes
 			// no values, so it must not be reported as unavailable.
-			results[i] = result{id: src.ID()}
+			results[i] = result{src: src}
 			continue
 		}
 		wg.Add(1)
-		go func(i int, id SourceID, v VocabularySource) {
+		go func(i int, src MovieSource, v VocabularySource) {
 			defer wg.Done()
 			f, err := v.Vocabulary(ctx)
-			results[i] = result{id: id, filters: f, err: err}
-		}(i, src.ID(), v)
+			results[i] = result{src: src, filters: f, err: err}
+		}(i, src, v)
 	}
 	wg.Wait()
 
 	merged := AvailableFilters{Genres: []string{}, OfficialRatings: []string{}}
-	failed := make([]SourceID, 0)
+	failed := make([]SourceProblem, 0)
 	ok := false
 	seenGenre := make(map[string]bool)
 	seenRating := make(map[string]bool)
 	for _, r := range results {
 		if r.err != nil {
-			log.Printf("source %s vocabulary failed: %v", r.id, r.err)
-			failed = append(failed, r.id)
+			log.Printf("source %s vocabulary failed: %v", r.src.ID(), r.err)
+			failed = append(failed, sourceProblem(r.src, r.err))
 			continue
 		}
 		ok = true
@@ -187,14 +187,14 @@ func fetchDepth(s MovieSource) int {
 }
 
 // gatherShoe queries every source concurrently and merges their results into
-// one shoe. It returns the merged movies and the ids of any sources that
-// failed.
+// one shoe. It returns the merged movies and a problem for any source that
+// failed, naming what went wrong with it.
 //
 // Partial failure degrades rather than aborting: a movie night should not be
 // blocked because one upstream is down. The caller is responsible for telling
 // the host which sources are missing. An error is returned only when every
 // source failed, since an empty shoe has nothing to deal.
-func gatherShoe(ctx context.Context, sources []MovieSource, f Filters) ([]Movie, []SourceID, error) {
+func gatherShoe(ctx context.Context, sources []MovieSource, f Filters) ([]Movie, []SourceProblem, error) {
 	results := make([]sourceResult, len(sources))
 	var wg sync.WaitGroup
 	for i, src := range sources {
@@ -206,17 +206,17 @@ func gatherShoe(ctx context.Context, sources []MovieSource, f Filters) ([]Movie,
 			sf := f
 			sf.Limit = fetchDepth(src)
 			movies, err := src.Search(ctx, sf)
-			results[i] = sourceResult{source: src.ID(), movies: movies, err: err}
+			results[i] = sourceResult{source: src, movies: movies, err: err}
 		}(i, src)
 	}
 	wg.Wait()
 
 	sets := make([][]Movie, 0, len(results))
-	failed := make([]SourceID, 0)
+	failed := make([]SourceProblem, 0)
 	for _, r := range results {
 		if r.err != nil {
-			log.Printf("source %s failed: %v", r.source, r.err)
-			failed = append(failed, r.source)
+			log.Printf("source %s failed: %v", r.source.ID(), r.err)
+			failed = append(failed, sourceProblem(r.source, r.err))
 			continue
 		}
 		sets = append(sets, r.movies)

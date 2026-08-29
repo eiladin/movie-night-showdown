@@ -40,6 +40,7 @@ type Client struct {
 	session       *Session
 	sources       map[SourceID]MovieSource // used by handleHostStart to deal the deck
 	order         []SourceID               // canonical source order for selectSources
+	pending       []pendingLibrary         // configured libraries that never resolved, reported at host:start
 	participantID string                   // set once join() attaches this client to a participant
 	token         string                   // from ?token=; used to match/resume a participant
 }
@@ -73,6 +74,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		session: session,
 		sources: set.sources,
 		order:   set.order,
+		pending: set.pending,
 		token:   token,
 	}
 
@@ -324,14 +326,14 @@ func (c *Client) handleHostStart(raw json.RawMessage) {
 		c.sendError("failed to load movies from any selected source")
 		return
 	}
-	if len(failed) > 0 {
-		names := make([]string, len(failed))
-		for i, f := range failed {
-			names[i] = string(f)
-		}
+	// Report every source the deck could not be dealt from, including libraries
+	// that are configured but unresolved — those register no source, so nothing
+	// else in the session would ever mention them. The client owns the wording;
+	// the message here is the fallback for a client that renders none of its own.
+	if problems := appendProblems(failed, pendingProblems(c.pending)); len(problems) > 0 {
 		c.sendJSON("warning", WarningPayload{
-			Message: "Could not reach: " + strings.Join(names, ", ") + ". Dealt from the rest.",
-			Sources: failed,
+			Message:  "Dealt from the rest: " + problemLabels(problems) + ".",
+			Problems: problems,
 		})
 	}
 	if len(movies) == 0 {

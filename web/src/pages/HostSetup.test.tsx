@@ -137,11 +137,34 @@ describe('vocabulary refetch on source change', () => {
 })
 
 describe('failure reporting', () => {
-    it('names the sources that could not be reached', async () => {
+    it('says a source rejected the credentials rather than only naming it', async () => {
         renderHostSetup()
-        await settleInitialLoad({ unavailable: ['netflix'] })
+        await settleInitialLoad({
+            problems: [{ label: 'Jellyfin', source: 'jellyfin', reason: 'unauthorized' }],
+        })
 
-        expect(await screen.findByText(/could not reach: netflix/i)).toBeInTheDocument()
+        expect(await screen.findByText(/jellyfin rejected the credentials/i)).toBeInTheDocument()
+    })
+
+    it('distinguishes an unreachable host from a rejected credential', async () => {
+        renderHostSetup()
+        await settleInitialLoad({
+            problems: [{ label: 'Plex — Films', source: 'plex-3', reason: 'unreachable' }],
+        })
+
+        expect(await screen.findByText(/plex — films could not be reached/i)).toBeInTheDocument()
+    })
+
+    // A library configured by a name the server could not resolve registers no
+    // source at all, so nothing else on the screen would ever mention it.
+    it('reports a library that could not be resolved, and keeps the page usable', async () => {
+        renderHostSetup()
+        await settleInitialLoad({
+            problems: [{ label: 'Jellyfin — Kids Movies', reason: 'unresolved' }],
+        })
+
+        expect(await screen.findByText(/jellyfin — kids movies could not be found/i)).toBeInTheDocument()
+        expect(screen.getByRole('group', { name: /genres/i })).toBeInTheDocument()
     })
 
     it('explains a failed vocabulary request instead of showing empty pickers', async () => {

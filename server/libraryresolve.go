@@ -81,8 +81,8 @@ func looksLikeJellyfinLibraryID(s string) bool {
 func resolvePendingLibraries(ctx context.Context, cfg Config, previous *sourceSet) (*sourceSet, error) {
 	next := cfg
 
-	jellyfin, jfErr := resolveLibraryNames(ctx, cfg, SourceJellyfin, cfg.JellyfinLibraries)
-	plex, pxErr := resolveLibraryNames(ctx, cfg, SourcePlex, cfg.PlexLibraries)
+	jellyfin, jfUnmatched, jfErr := resolveLibraryNames(ctx, cfg, SourceJellyfin, cfg.JellyfinLibraries)
+	plex, pxUnmatched, pxErr := resolveLibraryNames(ctx, cfg, SourcePlex, cfg.PlexLibraries)
 	if err := errors.Join(jfErr, pxErr); err != nil {
 		// A failure here is transient by assumption — the media server is starting,
 		// or briefly unreachable — so it is reported and retried on the retry floor
@@ -117,23 +117,41 @@ func resolvePendingLibraries(ctx context.Context, cfg Config, previous *sourceSe
 	}
 
 	if len(resolved.pending) > 0 {
-		// Every name either resolved or was reported unresolvable, so nothing
-		// should still be pending. Reaching here means the discriminator and the
-		// resolver disagree about what an identifier looks like.
+		// Every name either resolved or came back in the unmatched list, so
+		// addLocalSources should have found nothing left to defer. Reaching here
+		// means the discriminator and the resolver disagree about what an
+		// identifier looks like.
 		return nil, fmt.Errorf("server: %d librar(ies) still pending after resolution", len(resolved.pending))
 	}
+
+	// A name the service does not have stays pending, which registers no source
+	// for it and reports it as unresolved. Dropping it here instead would leave a
+	// typo in a library name looking exactly like a library that is simply empty.
+	// These never resolve on a retry, so the set keeps no resolve function.
+	resolved.pending = append(pendingFor("Jellyfin", SourceJellyfin, jfUnmatched),
+		pendingFor("Plex", SourcePlex, pxUnmatched)...)
 	return resolved, nil
+}
+
+// pendingFor turns a service's unmatched library names into pending entries.
+func pendingFor(serviceName string, service SourceID, names []string) []pendingLibrary {
+	out := make([]pendingLibrary, 0, len(names))
+	for _, n := range names {
+		out = append(out, pendingLibrary{service: service, serviceName: serviceName, name: n})
+	}
+	return out
 }
 
 // resolveLibraryNames replaces every named entry in refs with the identified
 // library it matches, leaving already-identified entries alone.
 //
-// An entry that cannot be matched is logged and dropped, not fatal: that mirrors
-// how an unknown streaming provider entry behaves, and a typo in one library name
-// should not cost a deployment the libraries that were spelled correctly. The error
-// return is reserved for a failure to enumerate at all, which is the transient case
-// worth retrying.
-func resolveLibraryNames(ctx context.Context, cfg Config, service SourceID, refs []libraryRef) ([]libraryRef, error) {
+// An entry that cannot be matched is returned in the second result and registers
+// no source, rather than being fatal: that mirrors how an unknown streaming
+// provider entry behaves, and a typo in one library name should not cost a
+// deployment the libraries that were spelled correctly. It is reported to the host
+// as unresolved. The error return is reserved for a failure to enumerate at all,
+// which is the transient case worth retrying.
+func resolveLibraryNames(ctx context.Context, cfg Config, service SourceID, refs []libraryRef) ([]libraryRef, []string, error) {
 	needed := false
 	for _, ref := range refs {
 		if isPendingName(service, ref) {
@@ -142,12 +160,12 @@ func resolveLibraryNames(ctx context.Context, cfg Config, service SourceID, refs
 		}
 	}
 	if !needed {
-		return refs, nil
+		return refs, nil, nil
 	}
 
 	available, err := enumerateLibraries(ctx, cfg, service)
 	if err != nil {
-		return nil, fmt.Errorf("%s: cannot list libraries to resolve names: %w", service, err)
+		return nil, nil, fmt.Errorf("%s: cannot list libraries to resolve names: %w", service, err)
 	}
 
 	// Index by lowercased name. Case is folded here, at the point of comparison,
@@ -181,6 +199,7 @@ func resolveLibraryNames(ctx context.Context, cfg Config, service SourceID, refs
 	}
 
 	out := make([]libraryRef, 0, len(refs))
+	unmatched := make([]string, 0)
 	for _, ref := range refs {
 		if !isPendingName(service, ref) {
 			out = append(out, ref)
@@ -188,12 +207,13 @@ func resolveLibraryNames(ctx context.Context, cfg Config, service SourceID, refs
 		}
 		match, ok := byName[strings.ToLower(strings.TrimSpace(ref.ID))]
 		if !ok {
-			log.Printf("%s: no library named %q; ignoring it", service, ref.ID)
+			log.Printf("%s: no library named %q; it will be reported as unresolved", service, ref.ID)
+			unmatched = append(unmatched, ref.ID)
 			continue
 		}
 		out = append(out, match)
 	}
-	return out, nil
+	return out, unmatched, nil
 }
 
 // enumerateLibraries lists the movie libraries a service offers.
@@ -245,7 +265,7 @@ func (c *JellyfinClient) Libraries(ctx context.Context) ([]libraryRef, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("jellyfin: GET /Library/MediaFolders returned %s", resp.Status)
+		return nil, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET /Library/MediaFolders returned %s", resp.Status))
 	}
 
 	var parsed jellyfinMediaFolders

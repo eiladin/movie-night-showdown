@@ -162,7 +162,7 @@ func (c *PlexClient) get(ctx context.Context, path string, q url.Values) (*plexR
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("plex: GET %s returned %s", path, resp.Status)
+		return nil, statusFailure(resp.StatusCode, fmt.Errorf("plex: GET %s returned %s", path, resp.Status))
 	}
 
 	var parsed plexResponse

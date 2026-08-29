@@ -270,6 +270,30 @@ hand-curated and is not touched by this pipeline.
   `web/src/components/ChipPicker.tsx`) with the remainder counted on screen,
   because a truncated list that looks complete is worse than a short one that
   says so.
+- **A failure is reported with its cause, and never as a blank screen.** Every
+  source failure travels as a `SourceProblem` (`server/sourceerror.go`) carrying
+  the qualified label, the `SourceID` where one exists, and a machine-readable
+  reason: `unauthorized`, `unreachable`, or `unresolved`. The reason is produced
+  at the client layer, where the status code still exists — `statusFailure` wraps
+  a non-2xx response into a `SourceError`, and `failureReason` reads it back with
+  `errors.As` at the gather layer. Only 401 and 403 are credential problems;
+  everything unclassified is `unreachable`, because sending an operator to rotate
+  a working key is worse than saying the host did not answer. The wording lives
+  on the client (`web/src/components/SourceProblems.tsx`), as it does for source
+  labels and end reasons.
+- **A configured library that never became a source is still reported.** An
+  unresolvable name registers no source, deliberately, and it used to be
+  reported to nobody: a deployment whose media server rejected its credentials
+  got an empty picker and no explanation. `sourceSet.pending` survives into the
+  response as a problem with reason `unresolved` and no `source`, and
+  `resolveLibraryNames` returns the names it could not match so a typo is
+  reported rather than dropped. Do not "fix" this by registering the source.
+- **A source problem is a banner, never a page.** The handlers answer 200 with
+  an empty result and the problems attached rather than 502 with an empty body,
+  and the banner renders beside a screen that keeps working. The other sources
+  are still usable; that is the entire point of degrading on partial failure.
+  The `warning` socket message is part of this and has a listener in
+  `web/src/pages/Lobby.tsx` — it once had none and was sent into the void.
 - The docs (`AGENTS.md`, `README.md`, `docs/*`) are written in a neutral,
   professional voice, since they are read by other agents and humans.
 

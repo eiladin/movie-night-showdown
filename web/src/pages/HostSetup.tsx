@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { getAvailableFilters, getPreview, warmLibrary, type PreviewFilters, type PreviewResponse, type SourceDescriptor, type SourceID } from '../api'
+import { getAvailableFilters, getPreview, warmLibrary, type PreviewFilters, type PreviewResponse, type SourceDescriptor, type SourceID, type SourceProblem } from '../api'
+import SourceProblems from '../components/SourceProblems'
 import { useFiltersFor, useSessionStore } from '../store'
 import { accentStyle } from '../sourceColor'
 import '../styles/chip-group.css'
@@ -86,9 +87,10 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
     // property of the deployment, not of the current selection, so it is
     // captured once and never touched by a refetch.
     const [streamingConfigured, setStreamingConfigured] = useState<boolean | null>(null)
-    // Sources that failed to answer the last vocabulary request. The rest of
-    // the answer is still usable, so this is surfaced inline.
-    const [unavailable, setUnavailable] = useState<SourceID[]>([])
+    // Sources the last vocabulary request could not use, with the reason. The
+    // rest of the answer is still usable, so this is surfaced inline rather
+    // than replacing the screen.
+    const [problems, setProblems] = useState<SourceProblem[]>([])
     const [filtersError, setFiltersError] = useState<string | null>(null)
     // Distinguishes "no answer yet" from "answered, and the answer was an
     // error". Keying availability off `available === null` alone conflates the
@@ -110,7 +112,7 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
                     genres: sortGenres(f.genres),
                     officialRatings: sortRatings(f.officialRatings),
                 })
-                setUnavailable(f.unavailable ?? [])
+                setProblems(f.problems ?? [])
                 // Reconcile any selection made while the answer was in flight.
                 // A source the server cannot query must not survive in state:
                 // it would ship in host:start and be dropped silently, and it
@@ -155,7 +157,7 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
                 const nextGenres = sortGenres(f.genres)
                 const nextRatings = sortRatings(f.officialRatings)
                 setAvailable({ genres: nextGenres, officialRatings: nextRatings })
-                setUnavailable(f.unavailable ?? [])
+                setProblems(f.problems ?? [])
                 setFiltersError(null)
                 // Drop picks the new selection no longer offers, so the host
                 // cannot submit a filter no selected source understands.
@@ -166,7 +168,7 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
                 if (ignore || (err instanceof DOMException && err.name === 'AbortError')) return
                 console.error('Failed to load filter options for the selected sources:', err)
                 setAvailable(null)
-                setUnavailable([])
+                setProblems([])
                 setFiltersError('Could not load filter options for the selected sources. Genres and parental ratings are unavailable; try again or change the source selection.')
             })
         return () => {
@@ -204,13 +206,6 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
     const unwatchedSupported = sources.some(
         (id) => offeredSources.find((s) => s.id === id)?.supportsUnwatched === true,
     )
-
-    // sourceLabel names a source the server reported, falling back to its id.
-    // Ids are not always readable — a provider configured by number resolves to
-    // something like "tmdb-1899" — so prefer the label wherever one exists.
-    function sourceLabel(id: SourceID): string {
-        return offeredSources.find((s) => s.id === id)?.label ?? id
-    }
 
     // At least one source must stay selected: a session with no source has no
     // deck to deal.
@@ -298,12 +293,10 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
                 )}
             </fieldset>
 
-            {unavailable.length > 0 && (
-                <p className="preview-unavailable">
-                    Could not reach: {unavailable.map(sourceLabel).join(', ')}. The genre and
-                    parental-rating lists may be incomplete.
-                </p>
-            )}
+            <SourceProblems
+                problems={problems}
+                context="The genre and parental-rating lists may be incomplete. Every other source still works."
+            />
 
             {filtersError && <p className="preview-error">{filtersError}</p>}
 
@@ -379,12 +372,10 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
 
             {preview && (
                 <div className="preview-results">
-                    {(preview.unavailable?.length ?? 0) > 0 && (
-                        <p className="preview-unavailable">
-                            Could not reach: {preview.unavailable.map(sourceLabel).join(', ')}. Those
-                            results are missing.
-                        </p>
-                    )}
+                    <SourceProblems
+                        problems={preview.problems ?? []}
+                        context="Those results are missing from the preview."
+                    />
                     <p className="preview-count">
                         {preview.count >= 150 ? `showing ${preview.count} of many` : `${preview.count} movies match`}
                     </p>
