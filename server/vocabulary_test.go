@@ -95,7 +95,7 @@ func TestGatherVocabularyReportsPartialFailure(t *testing.T) {
 	if !slices.Equal(got.Genres, []string{"Action"}) {
 		t.Errorf("genres = %v, want [Action]", got.Genres)
 	}
-	if !slices.Equal(failed, []SourceID{SourceNetflix}) {
+	if len(failed) != 1 || failed[0].Source != SourceNetflix {
 		t.Errorf("failed = %v, want [netflix]", failed)
 	}
 }
@@ -109,7 +109,7 @@ func TestGatherVocabularyErrorsWhenEverySourceFails(t *testing.T) {
 	if !errors.Is(err, errAllSourcesFailed) {
 		t.Errorf("err = %v, want errAllSourcesFailed", err)
 	}
-	if !slices.Equal(failed, []SourceID{SourceNetflix}) {
+	if len(failed) != 1 || failed[0].Source != SourceNetflix {
 		t.Errorf("failed = %v, want [netflix]", failed)
 	}
 }

@@ -255,7 +255,7 @@ func (t *TMDBSource) fetchPage(ctx context.Context, f Filters, certification str
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return out, fmt.Errorf("tmdb: GET /discover/movie returned %s", resp.Status)
+		return out, statusFailure(resp.StatusCode, fmt.Errorf("tmdb: GET /discover/movie returned %s", resp.Status))
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return out, fmt.Errorf("tmdb: decode /discover/movie response: %w", err)

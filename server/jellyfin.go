@@ -135,7 +135,7 @@ func (c *JellyfinClient) Movies(ctx context.Context, filters Filters) ([]Movie, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, fmt.Errorf("jellyfin: GET /Items returned %s", resp.Status)
+		return nil, 0, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET /Items returned %s", resp.Status))
 	}
 
 	var parsed jellyfinItemsResponse
@@ -226,7 +226,7 @@ func (c *JellyfinClient) Vocabulary(ctx context.Context) (AvailableFilters, erro
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return AvailableFilters{}, fmt.Errorf("jellyfin: GET /Items/Filters returned %s", resp.Status)
+		return AvailableFilters{}, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET /Items/Filters returned %s", resp.Status))
 	}
 
 	var parsed struct {

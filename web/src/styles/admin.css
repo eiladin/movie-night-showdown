@@ -112,7 +112,8 @@
     opacity: 0.7;
 }
 
-/* A source that is configured but did not respond to the preview query. */
+/* A source that is configured but did not respond to the preview query.
+   The banner itself lives in styles/source-problems.css. */
 .preview-unavailable {
-    color: #e0a030;
+    color: var(--warning);
 }

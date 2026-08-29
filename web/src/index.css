@@ -10,6 +10,9 @@
   --chip-fill: #9333ea;
   --accent-2: #d946ef;
   --social-bg: rgba(244, 243, 236, 0.5);
+  --warning: #8a5a00;
+  --warning-bg: rgba(224, 160, 48, 0.12);
+  --warning-border: rgba(224, 160, 48, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
@@ -45,6 +48,9 @@
     --chip-fill: #7c3aed;
     --accent-2: #e879f9;
     --social-bg: rgba(47, 48, 58, 0.5);
+    --warning: #e0a030;
+    --warning-bg: rgba(224, 160, 48, 0.12);
+    --warning-border: rgba(224, 160, 48, 0.45);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }

@@ -69,9 +69,12 @@ type DeckPayload struct {
 // WarningPayload carries a non-fatal notice to one client. Unlike an error it
 // does not abort the operation in progress; it is sent alongside a deck that
 // was dealt from fewer sources than the host selected.
+//
+// Problems says which sources were missing and why. Message is a plain-text
+// fallback: the client renders the problems itself, in its own wording.
 type WarningPayload struct {
-	Message string     `json:"message"`
-	Sources []SourceID `json:"sources,omitempty"`
+	Message  string          `json:"message"`
+	Problems []SourceProblem `json:"problems,omitempty"`
 }
 
 // ParticipantUpdatePayload carries the current roster after a join, leave,

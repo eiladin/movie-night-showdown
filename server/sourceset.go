@@ -37,9 +37,14 @@ type sourceSet struct {
 }
 
 // pendingLibrary is one library named rather than identified.
+//
+// serviceName is the service's display name ("Jellyfin", "Plex"), carried here
+// because a pending library has no source object to ask for a label and nothing
+// may derive a label by branching on a SourceID.
 type pendingLibrary struct {
-	service SourceID
-	name    string
+	service     SourceID
+	serviceName string
+	name        string
 }
 
 // currentSources returns the live source set.
@@ -68,9 +73,14 @@ func (s *Server) currentSources() *sourceSet {
 
 	resolved, err := set.resolve.get(ctx, set.resolveFn)
 	if err != nil {
-		// Report nothing and return what works. The sources configured by
-		// identifier are already registered in this set, so a media server that is
-		// still starting costs the named libraries and nothing else.
+		// Return what works. The sources configured by identifier are already
+		// registered in this set, so a media server that is still starting costs
+		// the named libraries and nothing else.
+		//
+		// The failure is not silent: the set still carries its pending libraries,
+		// and every handler reports those through pendingProblems. A wrong API key
+		// with libraries configured by name registers no source for that service,
+		// and an empty picker with no explanation is the bug this exists to avoid.
 		return set
 	}
 
@@ -156,7 +166,7 @@ func addLocalSources(set *sourceSet, cfg Config) {
 	if cfg.JellyfinConfigured() {
 		for _, ref := range libraryRefsOrAll(cfg.JellyfinLibraries) {
 			if isPendingName(SourceJellyfin, ref) {
-				set.pending = append(set.pending, pendingLibrary{SourceJellyfin, ref.ID})
+				set.pending = append(set.pending, pendingLibrary{SourceJellyfin, "Jellyfin", ref.ID})
 				continue
 			}
 			set.add(NewJellyfinClient(cfg, ref))
@@ -168,7 +178,7 @@ func addLocalSources(set *sourceSet, cfg Config) {
 	if cfg.PlexConfigured() {
 		for _, ref := range libraryRefsOrAll(cfg.PlexLibraries) {
 			if isPendingName(SourcePlex, ref) {
-				set.pending = append(set.pending, pendingLibrary{SourcePlex, ref.ID})
+				set.pending = append(set.pending, pendingLibrary{SourcePlex, "Plex", ref.ID})
 				continue
 			}
 			set.add(NewPlexClient(cfg, ref))

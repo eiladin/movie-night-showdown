@@ -1,0 +1,28 @@
+/* Sources that are configured but could not be used for the last request.
+   Colours come from the tokens in index.css, which carry both a light and a
+   dark definition; a hardcoded palette here renders unreadably in one of the
+   two. */
+.source-problems {
+    margin: 0.5rem 0;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--warning-border);
+    border-left-width: 3px;
+    border-radius: 6px;
+    background: var(--warning-bg);
+    color: var(--warning);
+    font-size: 0.9rem;
+}
+
+.source-problems ul {
+    margin: 0;
+    padding-left: 1.1rem;
+}
+
+.source-problems li + li {
+    margin-top: 0.2rem;
+}
+
+.source-problems-context {
+    margin: 0.4rem 0 0;
+    opacity: 0.85;
+}

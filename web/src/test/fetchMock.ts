@@ -39,7 +39,7 @@ export function filtersResponse(over: Partial<AvailableFilters> = {}): Available
         genres: ['Action', 'Comedy'],
         officialRatings: ['PG', 'R'],
         sources: configuredSetup.sources,
-        unavailable: [],
+        problems: [],
         streaming: true,
         ...over,
     }

@@ -10,7 +10,10 @@ import {
     type ParticipantUpdatePayload,
     type SessionStatePayload,
     type SessionEndedPayload,
+    type WarningPayload,
 } from '../ws'
+import SourceProblems from '../components/SourceProblems'
+import type { SourceProblem } from '../api'
 import Swipe from './Swipe'
 import Result from './Result'
 import '../styles/lobby.css'
@@ -37,6 +40,9 @@ export default function Lobby() {
     const [name, setName] = useState('')
     const [joined, setJoined] = useState(() => SessionSocket.getToken(upperCode) !== '')
     const [socketError, setSocketError] = useState<string | null>(null)
+    // Sources the deck could not be dealt from. The deck was still dealt, so
+    // this is a banner beside the roster and never a replacement for it.
+    const [sourceProblems, setSourceProblems] = useState<SourceProblem[]>([])
     const socketRef = useRef<SessionSocket | null>(null)
 
     const [maxMovies, setMaxMovies] = useState(50)
@@ -73,6 +79,12 @@ export default function Lobby() {
         )
         const offDeck = socket.on('deck', (payload) => setDeck((payload as DeckPayload).movies))
         const offError = socket.on('error', (payload) => setSocketError((payload as ErrorPayload).message))
+        // A warning is not an error: the session started, from fewer sources
+        // than the host picked. Without this listener the server's explanation
+        // went nowhere and the host saw a short deck for no stated reason.
+        const offWarning = socket.on('warning', (payload) =>
+            setSourceProblems((payload as WarningPayload).problems ?? []),
+        )
         const offMatch = socket.on('match', (payload) => {
             const { movie } = payload as MatchPayload
             setWinner(movie)
@@ -89,6 +101,7 @@ export default function Lobby() {
             offParticipants()
             offDeck()
             offError()
+            offWarning()
             offMatch()
             offEnded()
             socket.close()
@@ -149,6 +162,11 @@ export default function Lobby() {
             {isHost && <QRJoin joinURL={joinURL} />}
 
             {socketError && <p className="lobby-error">{socketError}</p>}
+
+            <SourceProblems
+                problems={sourceProblems}
+                context="The deck was dealt from the sources that answered."
+            />
             {/* Filters stay editable for as long as the lobby is on screen.
                 HostSetup resumes from the same session code, so the round trip
                 costs neither the room nor the roster. Once Begin succeeds the

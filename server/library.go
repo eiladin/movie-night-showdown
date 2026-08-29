@@ -7,12 +7,14 @@ import (
 )
 
 // libraryPreviewResponse is the JSON body of GET /api/library/preview.
-// Unavailable names the selected sources that failed this query, so the host
-// can correct the problem before creating a room.
+// Problems names the selected sources that failed this query and why, so the
+// host can correct the problem before creating a room. A source id alone said
+// only that something was wrong, and a rejected credential and an unreachable
+// host have different fixes.
 type libraryPreviewResponse struct {
-	Count       int        `json:"count"`
-	Movies      []Movie    `json:"movies"`
-	Unavailable []SourceID `json:"unavailable"`
+	Count    int             `json:"count"`
+	Movies   []Movie         `json:"movies"`
+	Problems []SourceProblem `json:"problems"`
 }
 
 // handleLibraryPreview lets the host preview the filtered Jellyfin library
@@ -23,38 +25,51 @@ func (s *Server) handleLibraryPreview(w http.ResponseWriter, r *http.Request) {
 
 	set := s.currentSources()
 	sources := selectSources(set.sources, filters.Sources, set.order)
-	movies, failed, err := gatherShoe(r.Context(), sources, filters)
-	if err != nil {
-		log.Printf("library preview: %v", err)
-		http.Error(w, "failed to query any selected source", http.StatusBadGateway)
-		return
+
+	// No source at all is not a query failure. It is what a deployment whose
+	// libraries are all configured by unresolvable names has, and answering 502
+	// with an empty body is how that came to look like nothing being wrong.
+	// An empty preview plus the problems below says what actually happened.
+	var movies []Movie
+	var failed []SourceProblem
+	if len(sources) > 0 {
+		var err error
+		movies, failed, err = gatherShoe(r.Context(), sources, filters)
+		if err != nil {
+			log.Printf("library preview: %v", err)
+			http.Error(w, "failed to query any selected source", http.StatusBadGateway)
+			return
+		}
 	}
-	for _, f := range failed {
-		log.Printf("library preview: source %s unavailable", f)
+	if movies == nil {
+		movies = []Movie{}
 	}
-	if failed == nil {
-		failed = []SourceID{}
+	problems := appendProblems(failed, set.pendingProblems())
+	if len(problems) > 0 {
+		log.Printf("library preview: unusable sources: %s", problemLabels(problems))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(libraryPreviewResponse{
-		Count:       len(movies),
-		Movies:      movies,
-		Unavailable: failed,
+		Count:    len(movies),
+		Movies:   movies,
+		Problems: problems,
 	})
 }
 
 // libraryFiltersResponse is the JSON body of GET /api/library/filters: the
 // filter values the selected sources recognize, plus which movie sources this
 // deployment has credentials for. AvailableFilters is embedded, so the JSON
-// keeps its existing shape and only gains "sources" and "unavailable".
+// keeps its existing shape and only gains "sources" and "problems".
 type libraryFiltersResponse struct {
 	AvailableFilters
 	Sources []SourceDescriptor `json:"sources"`
-	// Unavailable names the selected sources whose vocabulary could not be
-	// fetched, so the host can be told the picker is incomplete instead of
-	// reading a short list as the truth.
-	Unavailable []SourceID `json:"unavailable"`
+	// Problems names the selected sources whose vocabulary could not be
+	// fetched and why, so the host can be told the picker is incomplete instead
+	// of reading a short list as the truth. Libraries configured by a name that
+	// could not be resolved appear here too: they register no source, so nothing
+	// else would ever mention them.
+	Problems []SourceProblem `json:"problems"`
 	// Streaming reports whether this deployment has a TMDB token at all, so the
 	// picker can offer the "add a token to unlock streaming" hint. It is not
 	// derivable from the source list: an empty streaming set and an
@@ -79,21 +94,29 @@ func (s *Server) handleLibraryFilters(w http.ResponseWriter, r *http.Request) {
 	set := s.currentSources()
 	sources := selectSources(set.sources, requested, set.order)
 
-	filters, failed, err := gatherVocabulary(r.Context(), sources)
-	if err != nil {
-		log.Printf("library filters: %v", err)
-		http.Error(w, "failed to fetch filter options from any selected source", http.StatusBadGateway)
-		return
+	// As in the preview: a deployment with no usable source still gets a working
+	// picker and a list of problems, rather than a 502 that says nothing.
+	filters := defaultAvailableFilters()
+	var failed []SourceProblem
+	if len(sources) > 0 {
+		var err error
+		filters, failed, err = gatherVocabulary(r.Context(), sources)
+		if err != nil {
+			log.Printf("library filters: %v", err)
+			http.Error(w, "failed to fetch filter options from any selected source", http.StatusBadGateway)
+			return
+		}
 	}
-	for _, f := range failed {
-		log.Printf("library filters: source %s unavailable", f)
+	problems := appendProblems(failed, set.pendingProblems())
+	if len(problems) > 0 {
+		log.Printf("library filters: unusable sources: %s", problemLabels(problems))
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(libraryFiltersResponse{
 		AvailableFilters: filters,
 		Sources:          configuredSources(set.sources, set.order),
-		Unavailable:      failed,
+		Problems:         problems,
 		Streaming:        s.config().StreamingConfigured(),
 	})
 }

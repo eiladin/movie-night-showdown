@@ -55,10 +55,25 @@ export interface PreviewFilters {
     sources?: SourceID[]
 }
 
+// SourceProblem is one source this deployment could not use, and why.
+//
+// reason is machine-readable and the client owns the wording (see
+// components/SourceProblems.tsx). It is typed as a union plus string so an
+// older client keeps compiling against a server that adds a reason.
+//
+// source is absent for a library configured by a name the server could not
+// resolve: such a library deliberately has no SourceID, so the label is all
+// there is to name it by.
+export interface SourceProblem {
+    label: string
+    source?: SourceID
+    reason: 'unauthorized' | 'unreachable' | 'unresolved' | string
+}
+
 export interface PreviewResponse {
     count: number
     movies: Movie[]
-    unavailable: SourceID[]
+    problems: SourceProblem[]
 }
 
 // Exported for tests: the query-param encoding is the contract with
@@ -113,10 +128,11 @@ export interface AvailableFilters {
     // with their display names, in the order they should be offered. A source
     // absent here cannot be selected — it would be dropped silently.
     sources: SourceDescriptor[]
-    // unavailable lists selected sources whose vocabulary could not be
-    // fetched. The response is still usable — it holds the union of whatever
+    // problems lists selected sources whose vocabulary could not be fetched,
+    // and why, plus any library configured by a name the server could not
+    // resolve. The response is still usable — it holds the union of whatever
     // did answer — so this is a completeness warning, not an error.
-    unavailable: SourceID[]
+    problems: SourceProblem[]
     // streaming reports whether the deployment has a TMDB token at all. It
     // cannot be derived from `sources`: a deployment with no streaming
     // services configured and one with no token look identical from there.

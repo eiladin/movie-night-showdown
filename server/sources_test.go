@@ -117,7 +117,7 @@ func TestGatherShoeDegradesOnPartialFailure(t *testing.T) {
 	if len(movies) != 1 {
 		t.Fatalf("expected the surviving source's movies, got %d", len(movies))
 	}
-	if len(failed) != 1 || failed[0] != SourceNetflix {
+	if len(failed) != 1 || failed[0].Source != SourceNetflix {
 		t.Fatalf("failed = %v, want [netflix]", failed)
 	}
 }
