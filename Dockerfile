@@ -14,7 +14,7 @@ RUN npm run build
 # Also pinned to BUILDPLATFORM, and cross-compiled via GOARCH instead. Go needs
 # no cross-toolchain here because CGO is disabled, so a native compiler produces
 # the target binary in seconds where emulation took minutes.
-FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
