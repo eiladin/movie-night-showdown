@@ -21,13 +21,13 @@ func jellyfinStub(t *testing.T, serverName string, movieCount int, validKey stri
 		case "/System/Info/Public":
 			_, _ = fmt.Fprintf(w, `{"ServerName":%q,"Version":"10.9.0"}`, serverName)
 		case "/Items":
-			if r.Header.Get("X-Emby-Token") != validKey {
+			if r.Header.Get("Authorization") != jellyfinAuthHeader(validKey) || r.Header.Get("X-Emby-Token") != "" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
 			_, _ = fmt.Fprintf(w, `{"Items":[],"TotalRecordCount":%d}`, movieCount)
 		case "/Users":
-			if r.Header.Get("X-Emby-Token") != validKey {
+			if r.Header.Get("Authorization") != jellyfinAuthHeader(validKey) || r.Header.Get("X-Emby-Token") != "" {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}

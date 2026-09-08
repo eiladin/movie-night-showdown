@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -115,10 +114,11 @@ type TMDBSource struct {
 	name     string
 	provider int
 	region   string
-	token    string
-	baseURL  string
 	imageURL string
-	http     *http.Client
+
+	// tmdbAPI carries the token, the API base URL and the HTTP client, shared
+	// with providerResolver so the bearer header has one construction.
+	tmdbAPI
 }
 
 // NewTMDBSource returns a source for one already-resolved provider. It returns
@@ -133,10 +133,12 @@ func NewTMDBSource(cfg Config, p StreamingProvider) *TMDBSource {
 		name:     p.Name,
 		provider: p.TMDBID,
 		region:   cfg.TMDBWatchRegion,
-		token:    cfg.TMDBReadToken,
-		baseURL:  cfg.tmdbBaseURL,
 		imageURL: tmdbImageBase,
-		http:     &http.Client{Timeout: 15 * time.Second},
+		tmdbAPI: tmdbAPI{
+			token:   cfg.TMDBReadToken,
+			baseURL: cfg.tmdbBaseURL,
+			http:    &http.Client{Timeout: 15 * time.Second},
+		},
 	}
 }
 
@@ -241,26 +243,8 @@ func mapCertifications(ratings []string) []string {
 // fetchPage issues one Discover request.
 func (t *TMDBSource) fetchPage(ctx context.Context, f Filters, certification string, page int) (tmdbDiscoverResponse, error) {
 	var out tmdbDiscoverResponse
-	reqURL := t.baseURL + "/discover/movie?" + t.discoverParams(f, certification, page).Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return out, err
-	}
-	req.Header.Set("Authorization", "Bearer "+t.token)
-	req.Header.Set("accept", "application/json")
-
-	resp, err := t.http.Do(req)
-	if err != nil {
-		return out, fmt.Errorf("tmdb: GET /discover/movie: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return out, statusFailure(resp.StatusCode, fmt.Errorf("tmdb: GET /discover/movie returned %s", resp.Status))
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return out, fmt.Errorf("tmdb: decode /discover/movie response: %w", err)
-	}
-	return out, nil
+	err := t.getJSON(ctx, "/discover/movie", t.discoverParams(f, certification, page), &out)
+	return out, err
 }
 
 // samplePages returns which page numbers to fetch given the total available.
@@ -393,6 +377,12 @@ func (t *TMDBSource) toMovies(resp tmdbDiscoverResponse) []Movie {
 // fetchPoster implements PosterFetcher. id is the TMDB poster path with its
 // leading slash trimmed; tag is unused (TMDB poster paths are already
 // content-addressed, so artwork changes produce a new path).
+//
+// This deliberately does not go through tmdbAPI. t.imageURL is image.tmdb.org,
+// a different host from the API, and it is an unauthenticated CDN: it wants no
+// credential and must never be sent one. Folding the two together behind an
+// "authenticated?" flag would put the v4 Read Token one wrong argument away
+// from an image request, so the construction stays separate on purpose.
 func (t *TMDBSource) fetchPoster(ctx context.Context, id, tag string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.imageURL+"/"+url.PathEscape(id), nil)
 	if err != nil {
