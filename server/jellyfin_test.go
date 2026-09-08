@@ -76,3 +76,55 @@ func TestJellyfinClient_Movies(t *testing.T) {
 		t.Fatalf("expected genres=Action (%d) to reduce the count vs no filter (%d)", filteredCount, allCount)
 	}
 }
+
+// TestJellyfinVocabularyOmitsUserID confirms that Vocabulary does NOT send userId
+// to /Items/Filters. A real Jellyfin server returns an empty result set for genres
+// and official ratings when userId is supplied, which broke the genre picker for
+// any deployment with JELLYFIN_USER_ID set. The stub mirrors this behaviour:
+// if userId is present, return empty arrays; otherwise return populated ones.
+func TestJellyfinVocabularyOmitsUserID(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Items/Filters" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		// Real Jellyfin's behaviour: /Items/Filters with userId returns empty.
+		if userID := r.URL.Query().Get("userId"); userID != "" {
+			_, _ = w.Write([]byte(`{"Genres":[],"OfficialRatings":[]}`))
+			return
+		}
+
+		// Without userId, the full vocabulary is returned.
+		_, _ = w.Write([]byte(`{"Genres":["Comedy","Action","Drama"],"OfficialRatings":["PG","PG-13","R"]}`))
+	}))
+	defer srv.Close()
+
+	// Create a client with a non-empty userID so we would catch a regression
+	// if the code silently sent it anyway.
+	c := NewJellyfinClient(Config{JellyfinURL: srv.URL, JellyfinAPIKey: "k", JellyfinUserID: "user-123"}, libraryRef{})
+	got, err := c.Vocabulary(context.Background())
+	if err != nil {
+		t.Fatalf("Vocabulary: %v", err)
+	}
+
+	wantGenres := []string{"Comedy", "Action", "Drama"}
+	if len(got.Genres) != len(wantGenres) {
+		t.Fatalf("got %d genres, want %d", len(got.Genres), len(wantGenres))
+	}
+	for i, w := range wantGenres {
+		if got.Genres[i] != w {
+			t.Errorf("genre[%d] = %q, want %q", i, got.Genres[i], w)
+		}
+	}
+
+	wantRatings := []string{"PG", "PG-13", "R"}
+	if len(got.OfficialRatings) != len(wantRatings) {
+		t.Fatalf("got %d ratings, want %d", len(got.OfficialRatings), len(wantRatings))
+	}
+	for i, w := range wantRatings {
+		if got.OfficialRatings[i] != w {
+			t.Errorf("rating[%d] = %q, want %q", i, got.OfficialRatings[i], w)
+		}
+	}
+}
