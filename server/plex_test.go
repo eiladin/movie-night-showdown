@@ -545,3 +545,48 @@ func TestPlexMovieSectionsFiltersNonMovieLibraries(t *testing.T) {
 		t.Errorf("sections = %+v, want only the two movie libraries", got)
 	}
 }
+
+// Both Plex call sites build their request one way, so the token travels on
+// each of them.
+func TestPlexSendsTokenOnSearchAndPoster(t *testing.T) {
+	ts := newPlexTestServer(t, map[string]string{
+		"/library/sections/3/all": plexTwoMovies,
+	})
+	c := plexClientFor(ts, "3")
+
+	if _, err := c.Search(context.Background(), Filters{}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if ts.token != "test-token" {
+		t.Fatalf("search token = %q, want test-token", ts.token)
+	}
+
+	ts.token = ""
+	poster := newPlexTestServer(t, map[string]string{
+		"/library/metadata/8014/thumb/1782791305": "image-bytes",
+	})
+	pc := plexClientFor(poster, "3")
+	if _, err := pc.fetchPoster(context.Background(), "8014", "1782791305"); err != nil {
+		t.Fatalf("fetchPoster: %v", err)
+	}
+	if poster.token != "test-token" {
+		t.Fatalf("poster token = %q, want test-token", poster.token)
+	}
+}
+
+// A stale token used to classify as unauthorized when listing movies and as an
+// unclassified failure when fetching art. Both now go through PlexClient.do.
+func TestPlexPosterClassifiesUnauthorized(t *testing.T) {
+	// The stub answers an unknown path with 401 and an HTML body, which is what
+	// Plex itself does for a rejected token.
+	ts := newPlexTestServer(t, nil)
+	c := plexClientFor(ts, "3")
+
+	_, err := c.fetchPoster(context.Background(), "8014", "1")
+	if err == nil {
+		t.Fatalf("expected an error from a 401 poster fetch")
+	}
+	if got := failureReason(err); got != FailureUnauthorized {
+		t.Fatalf("reason = %q, want %q", got, FailureUnauthorized)
+	}
+}

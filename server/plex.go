@@ -138,13 +138,15 @@ type plexGUID struct {
 	ID string `json:"id"`
 }
 
-// get issues an authenticated GET against the Plex server and decodes the
-// response.
+// newRequest builds an authenticated GET against this client's server.
 //
-// The status is checked before decoding because Plex's error path ignores the
-// Accept header entirely and returns an HTML body; handing that to the decoder
-// would report "invalid character '<'" instead of "unauthorized".
-func (c *PlexClient) get(ctx context.Context, path string, q url.Values) (*plexResponse, error) {
+// It is the one place that knows how this application talks to Plex: base URL
+// joining and the X-Plex-Token header. path is an absolute path such as
+// "/library/sections"; q may be nil.
+//
+// wantJSON asks for a JSON body. It is not set on every request: the poster path
+// wants image bytes, and the header exists for the reason given on get.
+func (c *PlexClient) newRequest(ctx context.Context, path string, q url.Values, wantJSON bool) (*http.Request, error) {
 	reqURL := c.baseURL + path
 	if len(q) > 0 {
 		reqURL += "?" + q.Encode()
@@ -153,17 +155,48 @@ func (c *PlexClient) get(ctx context.Context, path string, q url.Values) (*plexR
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
+	if wantJSON {
+		req.Header.Set("Accept", "application/json")
+	}
 	req.Header.Set("X-Plex-Token", c.token)
+	return req, nil
+}
 
+// do performs an authenticated GET and returns the response on 200 only. The
+// caller owns the body.
+//
+// A non-200 is wrapped by statusFailure so sourceerror.go can classify 401 and
+// 403 as a credential problem rather than an unreachable host. Every call site
+// goes through here, so a stale token classifies the same way whether it was
+// listing movies or fetching artwork.
+func (c *PlexClient) do(ctx context.Context, path string, q url.Values, wantJSON bool) (*http.Response, error) {
+	req, err := c.newRequest(ctx, path, q, wantJSON)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("plex: GET %s: %w", path, err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, statusFailure(resp.StatusCode, fmt.Errorf("plex: GET %s returned %s", path, resp.Status))
 	}
+	return resp, nil
+}
+
+// get issues an authenticated GET against the Plex server and decodes the
+// response.
+//
+// The status is checked before decoding because Plex's error path ignores the
+// Accept header entirely and returns an HTML body; handing that to the decoder
+// would report "invalid character '<'" instead of "unauthorized".
+func (c *PlexClient) get(ctx context.Context, path string, q url.Values) (*plexResponse, error) {
+	resp, err := c.do(ctx, path, q, true)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
 	var parsed plexResponse
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
@@ -412,18 +445,11 @@ func (c *PlexClient) fetchPoster(ctx context.Context, id, tag string) ([]byte, e
 	if tag != "" {
 		path += "/" + url.PathEscape(tag)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	// No Accept header: this wants image bytes, not JSON.
+	resp, err := c.do(ctx, path, nil, false)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Plex-Token", c.token)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("plex: fetch poster %s: %w", id, err)
-	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("plex: poster %s returned %s", id, resp.Status)
-	}
 	return io.ReadAll(resp.Body)
 }

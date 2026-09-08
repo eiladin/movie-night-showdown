@@ -2,11 +2,9 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -251,26 +249,9 @@ type jellyfinMediaFolders struct {
 // also has music, shows and mixed folders, and offering one of those as a movie
 // source would produce a source whose every query comes back empty.
 func (c *JellyfinClient) Libraries(ctx context.Context) ([]libraryRef, error) {
-	reqURL := c.baseURL + "/Library/MediaFolders"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Emby-Token", c.apiKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("jellyfin: GET /Library/MediaFolders: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET /Library/MediaFolders returned %s", resp.Status))
-	}
-
 	var parsed jellyfinMediaFolders
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("jellyfin: decode /Library/MediaFolders response: %w", err)
+	if err := c.getJSON(ctx, "/Library/MediaFolders", nil, &parsed); err != nil {
+		return nil, err
 	}
 
 	out := make([]libraryRef, 0, len(parsed.Items))

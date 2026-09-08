@@ -2,8 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -243,18 +241,21 @@ func (c providerCatalog) lookup(entry string) (StreamingProvider, bool) {
 // providerResolver resolves configured provider entries against TMDB. baseURL
 // is a field rather than the package constant so tests can point it at a stub.
 type providerResolver struct {
-	token   string
-	region  string
-	baseURL string
-	http    *http.Client
+	region string
+
+	// tmdbAPI carries the token, the API base URL and the HTTP client, shared
+	// with TMDBSource so the bearer header has one construction.
+	tmdbAPI
 }
 
 func newProviderResolver(cfg Config) *providerResolver {
 	return &providerResolver{
-		token:   cfg.TMDBReadToken,
-		region:  cfg.TMDBWatchRegion,
-		baseURL: cfg.tmdbBaseURL,
-		http:    &http.Client{Timeout: 10 * time.Second},
+		region: cfg.TMDBWatchRegion,
+		tmdbAPI: tmdbAPI{
+			token:   cfg.TMDBReadToken,
+			baseURL: cfg.tmdbBaseURL,
+			http:    &http.Client{Timeout: 10 * time.Second},
+		},
 	}
 }
 
@@ -263,28 +264,13 @@ func newProviderResolver(cfg Config) *providerResolver {
 func (r *providerResolver) fetch(ctx context.Context) (tmdbProviderList, error) {
 	q := url.Values{}
 	q.Set("watch_region", r.region)
-	endpoint := r.baseURL + "/watch/providers/movie?" + q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return tmdbProviderList{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+r.token)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := r.http.Do(req)
-	if err != nil {
-		return tmdbProviderList{}, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		// The token is never included in the error: it would reach the log.
-		return tmdbProviderList{}, fmt.Errorf("tmdb: GET /watch/providers/movie: unexpected status %d", resp.StatusCode)
-	}
-
+	// A non-200 arrives classified, so the settings screen can tell a rejected
+	// token from an unreachable TMDB. The token is never in the error: only the
+	// path and the status are, and both reach the log.
 	var list tmdbProviderList
-	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
-		return tmdbProviderList{}, fmt.Errorf("tmdb: decoding provider list: %w", err)
+	if err := r.getJSON(ctx, "/watch/providers/movie", q, &list); err != nil {
+		return tmdbProviderList{}, err
 	}
 	return list, nil
 }

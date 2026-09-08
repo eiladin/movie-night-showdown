@@ -74,6 +74,86 @@ func NewJellyfinClient(cfg Config, library libraryRef) *JellyfinClient {
 	}
 }
 
+// The identity this application presents to Jellyfin. Jellyfin's MediaBrowser
+// scheme carries a client identity beside the token; the values are cosmetic to
+// the server but appear in its device list, so they are fixed rather than
+// derived.
+const (
+	jellyfinClientName    = "Movie Night Showdown"
+	jellyfinDeviceName    = "server"
+	jellyfinDeviceID      = "movie-night-showdown"
+	jellyfinClientVersion = "1"
+)
+
+// jellyfinAuthHeader builds the value of the Authorization header Jellyfin
+// expects.
+//
+// This is the only place the scheme is written. The legacy X-Emby-Token header
+// it replaced is deprecated, can be switched off from Jellyfin 10.11 onwards,
+// and is slated for removal; a server with it disabled answers it with 401.
+// Every Jellyfin version that accepted the legacy header also accepts this one,
+// so there is no version to branch on and no fallback to keep.
+//
+// %q is load-bearing: an API key is operator-supplied and must not be able to
+// break out of its quoted field.
+func jellyfinAuthHeader(apiKey string) string {
+	return fmt.Sprintf("MediaBrowser Token=%q, Client=%q, Device=%q, DeviceId=%q, Version=%q",
+		apiKey, jellyfinClientName, jellyfinDeviceName, jellyfinDeviceID, jellyfinClientVersion)
+}
+
+// newRequest builds an authenticated GET against this client's server.
+//
+// It is the one place that knows how this application talks to Jellyfin: base
+// URL joining, the auth header, and Accept. path is an absolute path such as
+// "/Items"; q may be nil.
+func (c *JellyfinClient) newRequest(ctx context.Context, path string, q url.Values) (*http.Request, error) {
+	target := c.baseURL + path
+	if len(q) > 0 {
+		target += "?" + q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", jellyfinAuthHeader(c.apiKey))
+	return req, nil
+}
+
+// do performs an authenticated GET and returns the response on 200 only. The
+// caller owns the body.
+//
+// A non-200 is wrapped by statusFailure so sourceerror.go can classify 401 and
+// 403 as a credential problem rather than an unreachable host.
+func (c *JellyfinClient) do(ctx context.Context, path string, q url.Values) (*http.Response, error) {
+	req, err := c.newRequest(ctx, path, q)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("jellyfin: GET %s: %w", path, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET %s returned %s", path, resp.Status))
+	}
+	return resp, nil
+}
+
+// getJSON performs an authenticated GET and decodes the body into out.
+func (c *JellyfinClient) getJSON(ctx context.Context, path string, q url.Values, out any) error {
+	resp, err := c.do(ctx, path, q)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("jellyfin: decode %s response: %w", path, err)
+	}
+	return nil
+}
+
 // jellyfinItemsResponse is the shape of GET /Items.
 type jellyfinItemsResponse struct {
 	Items            []jellyfinItem `json:"Items"`
@@ -121,26 +201,9 @@ func (c *JellyfinClient) Movies(ctx context.Context, filters Filters) ([]Movie, 
 	filters.LibraryID = c.library.ID
 	filters.apply(q, c.userID != "")
 
-	reqURL := fmt.Sprintf("%s/Items?%s", c.baseURL, q.Encode())
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return nil, 0, err
-	}
-	req.Header.Set("X-Emby-Token", c.apiKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("jellyfin: GET /Items: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, 0, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET /Items returned %s", resp.Status))
-	}
-
 	var parsed jellyfinItemsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return nil, 0, fmt.Errorf("jellyfin: decode /Items response: %w", err)
+	if err := c.getJSON(ctx, "/Items", q, &parsed); err != nil {
+		return nil, 0, err
 	}
 
 	movies := make([]Movie, 0, len(parsed.Items))
@@ -202,39 +265,24 @@ func (c *JellyfinClient) SupportsUnwatched() bool { return c.userID != "" }
 // present in the Movie library, so the picker offers exactly what is on the
 // shelf.
 func (c *JellyfinClient) Vocabulary(ctx context.Context) (AvailableFilters, error) {
-	reqURL := fmt.Sprintf("%s/Items/Filters?IncludeItemTypes=Movie", c.baseURL)
+	q := url.Values{}
+	q.Set("IncludeItemTypes", "Movie")
 	if c.userID != "" {
-		reqURL += "&userId=" + url.QueryEscape(c.userID)
+		q.Set("userId", c.userID)
 	}
 	// Scope the vocabulary to this source's library. Unscoped, a host filtering a
 	// children's library is offered genres that only exist elsewhere on the server
 	// — filters that match nothing the source can return.
 	if c.library.ID != "" {
-		reqURL += "&parentId=" + url.QueryEscape(c.library.ID)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return AvailableFilters{}, err
-	}
-	req.Header.Set("X-Emby-Token", c.apiKey)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return AvailableFilters{}, fmt.Errorf("jellyfin: GET /Items/Filters: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return AvailableFilters{}, statusFailure(resp.StatusCode, fmt.Errorf("jellyfin: GET /Items/Filters returned %s", resp.Status))
+		q.Set("parentId", c.library.ID)
 	}
 
 	var parsed struct {
 		Genres          []string `json:"Genres"`
 		OfficialRatings []string `json:"OfficialRatings"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return AvailableFilters{}, fmt.Errorf("jellyfin: decode /Items/Filters response: %w", err)
+	if err := c.getJSON(ctx, "/Items/Filters", q, &parsed); err != nil {
+		return AvailableFilters{}, err
 	}
 
 	return AvailableFilters{
@@ -246,22 +294,17 @@ func (c *JellyfinClient) Vocabulary(ctx context.Context) (AvailableFilters, erro
 // fetchPoster downloads a movie's Primary poster from Jellyfin. A non-empty
 // tag pins the exact image version so the cache key and the bytes agree.
 func (c *JellyfinClient) fetchPoster(ctx context.Context, id, tag string) ([]byte, error) {
-	reqURL := fmt.Sprintf("%s/Items/%s/Images/Primary?maxWidth=600", c.baseURL, url.PathEscape(id))
+	q := url.Values{}
+	q.Set("maxWidth", "600")
 	if tag != "" {
-		reqURL += "&tag=" + url.QueryEscape(tag)
+		q.Set("tag", tag)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	// The body here is image bytes, not JSON, so this goes through do rather
+	// than getJSON.
+	resp, err := c.do(ctx, "/Items/"+url.PathEscape(id)+"/Images/Primary", q)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Emby-Token", c.apiKey)
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("jellyfin: fetch poster %s: %w", id, err)
-	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("jellyfin: poster %s returned %s", id, resp.Status)
-	}
 	return io.ReadAll(resp.Body)
 }

@@ -208,7 +208,7 @@ func (s *Server) handleVerifyJellyfin(w http.ResponseWriter, r *http.Request) {
 	// of Limit, so the count costs nothing beyond this single row.
 	q.Set("Limit", "1")
 	var items jellyfinItemsResponse
-	if err := getJSON(ctx, base, "/Items", q, "X-Emby-Token", key, &items); err != nil {
+	if err := getJSON(ctx, base, "/Items", q, "Authorization", jellyfinAuthHeader(key), &items); err != nil {
 		if rejectedCredential(err) {
 			writeJSON(w, http.StatusOK, verifySourceResponse{
 				Message: fmt.Sprintf("Reached %s, but it rejected the API key.", serverLabel(info)),
@@ -321,7 +321,7 @@ func (s *Server) handleJellyfinUsers(w http.ResponseWriter, r *http.Request) {
 		ID   string `json:"Id"`
 		Name string `json:"Name"`
 	}
-	if err := getJSON(ctx, base, "/Users", nil, "X-Emby-Token", key, &raw); err != nil {
+	if err := getJSON(ctx, base, "/Users", nil, "Authorization", jellyfinAuthHeader(key), &raw); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]string{
 			"message": "could not read the user list from Jellyfin",
 		})
