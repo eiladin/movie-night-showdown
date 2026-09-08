@@ -267,9 +267,12 @@ func (c *JellyfinClient) SupportsUnwatched() bool { return c.userID != "" }
 func (c *JellyfinClient) Vocabulary(ctx context.Context) (AvailableFilters, error) {
 	q := url.Values{}
 	q.Set("IncludeItemTypes", "Movie")
-	if c.userID != "" {
-		q.Set("userId", c.userID)
-	}
+	// Do NOT send userId to /Items/Filters. The vocabulary is a property of the
+	// library, not of a person. A real Jellyfin server returns an empty result set
+	// for genres and official ratings when userId is supplied, even when the user
+	// has access to movies carrying those values. This must not be "tidied" back in.
+	// See TestJellyfinVocabularyOmitsUserID.
+
 	// Scope the vocabulary to this source's library. Unscoped, a host filtering a
 	// children's library is offered genres that only exist elsewhere on the server
 	// — filters that match nothing the source can return.
