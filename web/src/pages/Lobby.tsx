@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
 import QRJoin from '../components/QRJoin'
-import { useFiltersFor, useSessionStore } from '../store'
+import { useFiltersFor, useSessionStore, useWaitForReadyFor } from '../store'
 import {
     SessionSocket,
     type DeckPayload,
@@ -30,6 +30,11 @@ export default function Lobby() {
     const participants = useSessionStore((s) => s.participants)
     const myParticipantId = useSessionStore((s) => s.myParticipantId)
     const filters = useFiltersFor(upperCode)
+    // The host's own pick, sent to the server; waitForReady below is the
+    // server's copy, which is what every client renders.
+    const waitForReadyPick = useWaitForReadyFor(upperCode)
+    const waitForReady = useSessionStore((s) => s.waitForReady)
+    const setWaitForReady = useSessionStore((s) => s.setWaitForReady)
     const applySessionState = useSessionStore((s) => s.applySessionState)
     const setParticipants = useSessionStore((s) => s.setParticipants)
     const setDeck = useSessionStore((s) => s.setDeck)
@@ -71,12 +76,23 @@ export default function Lobby() {
         const socket = new SessionSocket(upperCode, name)
         socketRef.current = socket
 
-        const offState = socket.on('session_state', (payload) =>
-            applySessionState(payload as SessionStatePayload),
-        )
-        const offParticipants = socket.on('participant_update', (payload) =>
-            setParticipants((payload as ParticipantUpdatePayload).participants),
-        )
+        const offState = socket.on('session_state', (payload) => {
+            const state = payload as SessionStatePayload
+            applySessionState(state)
+            // The host re-asserts its ready-gate pick on every join, which
+            // covers a reconnect and a return from "Change filters".
+            const self = state.participants.find((p) => p.id === state.yourParticipantId)
+            if (state.status === 'lobby' && self?.isHost) {
+                socket.send('host:options', {
+                    waitForReady: useSessionStore.getState().filtersByCode[upperCode]?.waitForReady ?? false,
+                })
+            }
+        })
+        const offParticipants = socket.on('participant_update', (payload) => {
+            const update = payload as ParticipantUpdatePayload
+            setParticipants(update.participants)
+            setWaitForReady(update.waitForReady ?? false)
+        })
         const offDeck = socket.on('deck', (payload) => setDeck((payload as DeckPayload).movies))
         const offError = socket.on('error', (payload) => setSocketError((payload as ErrorPayload).message))
         // A warning is not an error: the session started, from fewer sources
@@ -110,6 +126,15 @@ export default function Lobby() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [joined, upperCode])
 
+    const amHost = participants.some((p) => p.id === myParticipantId && p.isHost)
+    // Send the pick whenever it changes while this client is the host. The
+    // session_state listener above covers the initial send.
+    useEffect(() => {
+        if (amHost && status === 'lobby') {
+            socketRef.current?.send('host:options', { waitForReady: waitForReadyPick })
+        }
+    }, [amHost, waitForReadyPick, status])
+
     function handleJoinSubmit(e: FormEvent) {
         e.preventDefault()
         if (!name.trim()) return
@@ -122,7 +147,14 @@ export default function Lobby() {
     }
 
     const me = participants.find((p) => p.id === myParticipantId)
-    const isHost = me?.isHost ?? false
+    const isHost = amHost
+    // Offline guests count: the host's way past an absent guest is to turn
+    // the gate off, not to have the gate ignore them.
+    const notReady = waitForReady ? participants.filter((p) => !p.isHost && !p.ready).length : 0
+
+    function handleToggleReady() {
+        socketRef.current?.send('ready', { ready: !me?.ready })
+    }
     const joinURL = `${window.location.origin}/join/${upperCode}`
 
     if (!joined) {
@@ -186,10 +218,26 @@ export default function Lobby() {
                             {p.name}
                             {p.isHost ? ' (host)' : ''}
                         </span>
+                        {waitForReady && !p.isHost && (
+                            <span className={`participant-ready${p.ready ? ' ready' : ''}`}>
+                                {p.ready ? 'ready' : 'not ready'}
+                            </span>
+                        )}
                         <span className="participant-status">{p.connected ? 'online' : 'offline'}</span>
                     </li>
                 ))}
             </ul>
+
+            {waitForReady && me && !isHost && (
+                <button
+                    type="button"
+                    className={me.ready ? 'btn-ready ready' : 'btn-primary btn-ready'}
+                    aria-pressed={me.ready}
+                    onClick={handleToggleReady}
+                >
+                    {me.ready ? 'Ready — tap to undo' : 'Ready'}
+                </button>
+            )}
 
             {isHost && (
                 <form className="begin-form" onSubmit={handleBegin}>
@@ -212,9 +260,18 @@ export default function Lobby() {
                             onChange={(e) => setRequiredCount(Number(e.target.value))}
                         />
                     </label>
-                    <button type="submit" className="btn-primary" disabled={participants.length === 0}>
+                    <button
+                        type="submit"
+                        className="btn-primary"
+                        disabled={participants.length === 0 || notReady > 0}
+                    >
                         Begin
                     </button>
+                    {notReady > 0 && (
+                        <p className="hint begin-hint">
+                            {notReady === 1 ? '1 guest is' : `${notReady} guests are`} not ready yet.
+                        </p>
+                    )}
                 </form>
             )}
         </div>

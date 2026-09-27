@@ -35,6 +35,17 @@ type HostStartPayload struct {
 	RequiredCount int     `json:"requiredCount"`
 }
 
+// HostOptionsPayload is sent by the host, while the session is in the lobby,
+// to set session options that guests need before the deck is dealt.
+type HostOptionsPayload struct {
+	WaitForReady bool `json:"waitForReady"`
+}
+
+// ReadyPayload is sent by a guest in the lobby to set or clear its ready flag.
+type ReadyPayload struct {
+	Ready bool `json:"ready"`
+}
+
 // SwipePayload records one participant's vote on one movie.
 type SwipePayload struct {
 	MovieID string `json:"movieID"`
@@ -55,6 +66,7 @@ type SessionStatePayload struct {
 	Status            Status            `json:"status"`
 	Code              string            `json:"code"`
 	RequiredCount     int               `json:"requiredCount"`
+	WaitForReady      bool              `json:"waitForReady"`
 	Participants      []Participant     `json:"participants"`
 	YourParticipantID string            `json:"yourParticipantId"`
 	YourToken         string            `json:"yourToken"`
@@ -78,9 +90,11 @@ type WarningPayload struct {
 }
 
 // ParticipantUpdatePayload carries the current roster after a join, leave,
-// or connection-state change.
+// connection-state, or ready change, together with the lobby ready gate so a
+// change to either reaches every client through one message.
 type ParticipantUpdatePayload struct {
 	Participants []Participant `json:"participants"`
+	WaitForReady bool          `json:"waitForReady"`
 }
 
 // ProgressPayload is a lobby/HUD summary of swipe progress; it never reveals

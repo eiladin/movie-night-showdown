@@ -13,13 +13,29 @@ export interface SessionStatePayload {
     status: Status
     code: string
     requiredCount: number
+    waitForReady: boolean
     participants: Participant[]
     yourParticipantId: string
     yourToken: string
 }
 
+// ParticipantUpdatePayload carries the roster and the lobby ready gate, so a
+// change to either reaches every client through one message.
 export interface ParticipantUpdatePayload {
     participants: Participant[]
+    waitForReady: boolean
+}
+
+// --- Client -> Server payload shapes (see server/messages.go) ---
+
+// HostOptionsPayload is sent by the host while in the lobby as `host:options`.
+export interface HostOptionsPayload {
+    waitForReady: boolean
+}
+
+// ReadyPayload is sent by a guest while in the lobby as `ready`.
+export interface ReadyPayload {
+    ready: boolean
 }
 
 // DeckPayload mirrors server.DeckPayload: the ordered, capped deck dealt at

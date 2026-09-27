@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { getAvailableFilters, getPreview, warmLibrary, type PreviewFilters, type PreviewResponse, type SourceDescriptor, type SourceID, type SourceProblem } from '../api'
 import SourceProblems from '../components/SourceProblems'
-import { useFiltersFor, useSessionStore } from '../store'
+import { useFiltersFor, useSessionStore, useWaitForReadyFor } from '../store'
 import { accentStyle } from '../sourceColor'
 import '../styles/chip-group.css'
 import '../styles/admin.css'
@@ -67,6 +67,8 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
     // session starts blank rather than inheriting the last one's picks.
     // Only read on the first render; these are uncontrolled from here on.
     const saved = useFiltersFor(sessionCode)
+    const savedWaitForReady = useWaitForReadyFor(sessionCode)
+    const [waitForReady, setWaitForReady] = useState(savedWaitForReady)
 
     const [genres, setGenres] = useState<string[]>(saved.genres ?? [])
     const [yearMin, setYearMin] = useState(saved.yearMin ? String(saved.yearMin) : '')
@@ -247,7 +249,7 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
     // URL since they can include an arbitrary list of genres, and are stored
     // under this session's code so they never reach a different session.
     function handleGoToLobby() {
-        if (sessionCode) setFilters(sessionCode, currentFilters())
+        if (sessionCode) setFilters(sessionCode, currentFilters(), waitForReady)
         // Warm the poster cache during the lobby-fill window (fire-and-forget;
         // must never block entering the lobby).
         warmLibrary(currentFilters()).catch((err) =>
@@ -256,11 +258,11 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
     }
 
     return (
-        <div className="admin-setup">
+        <div className="host-setup">
             <h1>Start a Showdown</h1>
 
             {sessionCode && (
-                <p className="admin-session-banner">
+                <p className="host-session-banner">
                     Session <strong>{sessionCode}</strong> created
                 </p>
             )}
@@ -357,6 +359,17 @@ function HostSetupForm({ sessionCode }: { sessionCode: string | null }) {
                     <span className="hint"> (not supported by the selected sources)</span>
                 )}
             </label>
+
+            {sessionCode && (
+                <label className="ready-toggle">
+                    <input
+                        type="checkbox"
+                        checked={waitForReady}
+                        onChange={(e) => setWaitForReady(e.target.checked)}
+                    />
+                    Wait for everyone to be ready
+                </label>
+            )}
 
             {sessionCode && (
                 <Link to={`/join/${sessionCode}`} onClick={handleGoToLobby} className="btn btn-primary">

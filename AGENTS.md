@@ -294,6 +294,15 @@ hand-curated and is not touched by this pipeline.
   are still usable; that is the entire point of degrading on partial failure.
   The `warning` socket message is part of this and has a listener in
   `web/src/pages/Lobby.tsx` — it once had none and was sent into the void.
+- **The lobby ready gate is host self-discipline, not a security boundary.** The
+  host's "Wait for everyone to be ready" pick is persisted client-side inside the
+  host's `filtersByCode` entry and sent as `host:options` on every join, and the
+  server holds the live value on `Session.WaitForReady`, broadcast on
+  `session_state` and `participant_update`. The server rejects `host:start` while a
+  guest is unready only to close the race where a guest un-readies as the host
+  presses Begin. `Participant.Ready` survives disconnect and reconnect, toggling
+  the gate never clears it, and an offline guest who is not ready still blocks
+  Begin: the host's way past an absent guest is to turn the gate off.
 - The docs (`AGENTS.md`, `README.md`, `docs/*`) are written in a neutral,
   professional voice, since they are read by other agents and humans.
 

@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -187,6 +188,10 @@ func (c *Client) handleMessage(env Envelope) {
 		c.handleJoin(env.Payload)
 	case "host:start":
 		c.handleHostStart(env.Payload)
+	case "host:options":
+		c.handleHostOptions(env.Payload)
+	case "ready":
+		c.handleReady(env.Payload)
 	case "swipe":
 		c.handleSwipe(env.Payload)
 	case "undo":
@@ -253,6 +258,7 @@ func (c *Client) handleJoin(raw json.RawMessage) {
 		Status:            session.Status,
 		Code:              session.Code,
 		RequiredCount:     session.RequiredCount,
+		WaitForReady:      session.WaitForReady,
 		Participants:      participantViewsLocked(session),
 		YourParticipantID: participant.ID,
 		YourToken:         participant.Token,
@@ -313,6 +319,11 @@ func (c *Client) handleHostStart(raw json.RawMessage) {
 		c.sendError("session already started")
 		return
 	}
+	if n := unreadyGuestsLocked(session); n > 0 {
+		session.mu.Unlock()
+		c.sendError(notReadyMessage(n))
+		return
+	}
 	session.mu.Unlock()
 
 	// The source fetches are blocking network calls; they must run without
@@ -361,6 +372,14 @@ func (c *Client) handleHostStart(raw json.RawMessage) {
 		c.sendError("session already started")
 		return
 	}
+	// Re-checked because a guest may have un-readied during the fetch. The
+	// gate is host self-discipline, not a security boundary; this check only
+	// closes the race between a guest un-readying and the host pressing Begin.
+	if n := unreadyGuestsLocked(session); n > 0 {
+		session.mu.Unlock()
+		c.sendError(notReadyMessage(n))
+		return
+	}
 	rosterCount := len(session.Participants)
 	session.Locked = true
 	if p.RequiredCount >= 1 && p.RequiredCount <= rosterCount {
@@ -374,6 +393,88 @@ func (c *Client) handleHostStart(raw json.RawMessage) {
 
 	session.broadcastDeck()
 	session.broadcastSessionState()
+}
+
+// handleHostOptions sets the host's lobby options and broadcasts them. Only
+// the host may send it, and only while the session is in the lobby.
+func (c *Client) handleHostOptions(raw json.RawMessage) {
+	var p HostOptionsPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		c.sendError("invalid host:options payload")
+		return
+	}
+	session := c.session
+	session.mu.Lock()
+	if c.participantID != session.HostID {
+		session.mu.Unlock()
+		c.sendError("only the host can change session options")
+		return
+	}
+	if session.Status != StatusLobby {
+		session.mu.Unlock()
+		c.sendError("session already started")
+		return
+	}
+	session.WaitForReady = p.WaitForReady
+	session.mu.Unlock()
+
+	session.broadcastParticipants()
+}
+
+// handleReady sets or clears a guest's ready flag and broadcasts the roster.
+// The host has no ready flag, and the flag is frozen once the lobby closes.
+func (c *Client) handleReady(raw json.RawMessage) {
+	var p ReadyPayload
+	if err := json.Unmarshal(raw, &p); err != nil {
+		c.sendError("invalid ready payload")
+		return
+	}
+	session := c.session
+	session.mu.Lock()
+	if c.participantID == session.HostID {
+		session.mu.Unlock()
+		c.sendError("the host does not ready up")
+		return
+	}
+	if session.Status != StatusLobby {
+		session.mu.Unlock()
+		c.sendError("session already started")
+		return
+	}
+	participant, ok := session.Participants[c.participantID]
+	if !ok {
+		session.mu.Unlock()
+		c.sendError("join the session first")
+		return
+	}
+	participant.Ready = p.Ready
+	session.mu.Unlock()
+
+	session.broadcastParticipants()
+}
+
+// unreadyGuestsLocked counts the non-host participants that block host:start
+// under the ready gate: zero when the gate is off. Connection state is
+// deliberately ignored, so an offline guest who is not ready still counts.
+// Caller must hold session.mu.
+func unreadyGuestsLocked(session *Session) int {
+	if !session.WaitForReady {
+		return 0
+	}
+	n := 0
+	for id, p := range session.Participants {
+		if id != session.HostID && !p.Ready {
+			n++
+		}
+	}
+	return n
+}
+
+func notReadyMessage(n int) string {
+	if n == 1 {
+		return "1 participant is not ready"
+	}
+	return strconv.Itoa(n) + " participants are not ready"
 }
 
 // handleSwipe records one vote and, on a match, transitions the session to
@@ -573,10 +674,13 @@ func (s *Session) removeClient(c *Client) {
 // broadcastParticipants sends the current roster to every attached client.
 func (s *Session) broadcastParticipants() {
 	s.mu.Lock()
-	views := participantViewsLocked(s)
+	payload := ParticipantUpdatePayload{
+		Participants: participantViewsLocked(s),
+		WaitForReady: s.WaitForReady,
+	}
 	s.mu.Unlock()
 
-	s.broadcast("participant_update", ParticipantUpdatePayload{Participants: views})
+	s.broadcast("participant_update", payload)
 }
 
 // broadcastDeck sends the just-dealt, ordered deck to every attached client.
@@ -600,6 +704,7 @@ func (s *Session) broadcastSessionState() {
 	status := s.Status
 	code := s.Code
 	requiredCount := s.RequiredCount
+	waitForReady := s.WaitForReady
 	participants := participantViewsLocked(s)
 	clients := make(map[string]*Client, len(s.clients))
 	for id, c := range s.clients {
@@ -618,6 +723,7 @@ func (s *Session) broadcastSessionState() {
 			Status:            status,
 			Code:              code,
 			RequiredCount:     requiredCount,
+			WaitForReady:      waitForReady,
 			Participants:      participants,
 			YourParticipantID: pid,
 			YourToken:         tokens[pid],

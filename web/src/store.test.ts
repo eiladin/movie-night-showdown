@@ -98,6 +98,16 @@ describe('filter persistence', () => {
         ])
     })
 
+    it('stores the ready-gate pick in the same entry, defaulting to off', () => {
+        useSessionStore.getState().setFilters('ABCD', { genres: ['Action'] }, true)
+        useSessionStore.getState().setFilters('EFGH', { genres: ['Drama'] })
+
+        const stored = persisted().state?.filtersByCode as Record<string, { waitForReady?: boolean }>
+        expect(stored['ABCD'].waitForReady).toBe(true)
+        expect(stored['EFGH'].waitForReady).toBe(false)
+        expect(Object.keys(persisted().state ?? {})).toEqual(['filtersByCode'])
+    })
+
     it('leaves remembered filters in place when the session state is reset', () => {
         useSessionStore.getState().setFilters('ABCD', { genres: ['Action'] })
         useSessionStore.getState().setStatus('active')

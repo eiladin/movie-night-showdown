@@ -191,3 +191,17 @@ describe('failure reporting', () => {
         expect(screen.queryByRole('checkbox', { name: 'Jellyfin' })).not.toBeInTheDocument()
     })
 })
+
+describe('ready gate option', () => {
+    it('defaults off and is remembered with the filters on the way to the lobby', async () => {
+        renderHostSetup()
+        await settleInitialLoad()
+        const box = screen.getByRole('checkbox', { name: /wait for everyone to be ready/i })
+        expect(box).not.toBeChecked()
+
+        await userEvent.click(box)
+        await userEvent.click(screen.getByRole('link', { name: /go to the lobby/i }))
+
+        expect(useSessionStore.getState().filtersByCode['ABCD'].waitForReady).toBe(true)
+    })
+})

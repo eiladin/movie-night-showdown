@@ -13,6 +13,9 @@ const MAX_REMEMBERED_FILTERS = 5
 // rely on for that.
 interface RememberedFilters {
     filters: PreviewFilters
+    // waitForReady is the host's lobby ready-gate pick. It is a host pick like
+    // the filters, so it lives in the same entry rather than a key of its own.
+    waitForReady?: boolean
     updatedAt: number
 }
 
@@ -26,6 +29,9 @@ export interface Participant {
     name: string
     isHost: boolean
     connected: boolean
+    // ready is a guest's answer to the lobby ready gate. It is only
+    // meaningful while the session's waitForReady is on.
+    ready: boolean
 }
 
 export type Vote = 'yes' | 'no'
@@ -34,6 +40,7 @@ interface SessionSnapshot {
     status: Status
     code: string
     requiredCount: number
+    waitForReady?: boolean
     participants: Participant[]
     yourParticipantId: string
     yourVotes?: Record<string, Vote>
@@ -43,6 +50,9 @@ interface SessionStore {
     code: string | null
     status: Status
     requiredCount: number
+    // waitForReady is the session's ready gate as the server last reported
+    // it. The host's own pick is in filtersByCode; this is what is in effect.
+    waitForReady: boolean
     participants: Participant[]
     deck: Movie[]
     myParticipantId: string | null
@@ -68,11 +78,12 @@ interface SessionStore {
 
     applySessionState: (snapshot: SessionSnapshot) => void
     setParticipants: (participants: Participant[]) => void
+    setWaitForReady: (waitForReady: boolean) => void
     setDeck: (deck: Movie[]) => void
     setStatus: (status: Status) => void
     recordVote: (movieId: string, vote: Vote) => void
     clearVote: (movieId: string) => void
-    setFilters: (code: string, filters: PreviewFilters) => void
+    setFilters: (code: string, filters: PreviewFilters, waitForReady?: boolean) => void
     setWinner: (movie: Movie) => void
     setLeaderboard: (lb: LeaderboardEntry[], reason?: EndReason) => void
     reset: () => void
@@ -82,6 +93,7 @@ const initialState = {
     code: null,
     status: 'lobby' as Status,
     requiredCount: 0,
+    waitForReady: false,
     participants: [],
     deck: [],
     myParticipantId: null,
@@ -122,12 +134,14 @@ export const useSessionStore = create<SessionStore>()(
                     status: snapshot.status,
                     code: snapshot.code,
                     requiredCount: snapshot.requiredCount,
+                    waitForReady: snapshot.waitForReady ?? false,
                     participants: snapshot.participants,
                     myParticipantId: snapshot.yourParticipantId,
                     myVoteState: snapshot.yourVotes || {},
                 }),
 
             setParticipants: (participants) => set({ participants }),
+            setWaitForReady: (waitForReady) => set({ waitForReady }),
             setDeck: (deck) => set({ deck }),
             setStatus: (status) => set({ status }),
 
@@ -141,11 +155,11 @@ export const useSessionStore = create<SessionStore>()(
                     return { myVoteState: next }
                 }),
 
-            setFilters: (code, filters) =>
+            setFilters: (code, filters, waitForReady = false) =>
                 set((s) => ({
                     filtersByCode: prune({
                         ...s.filtersByCode,
-                        [filtersKey(code)]: { filters, updatedAt: Date.now() },
+                        [filtersKey(code)]: { filters, waitForReady, updatedAt: Date.now() },
                     }),
                 })),
 
@@ -177,4 +191,10 @@ export function useFiltersFor(code: string | null): PreviewFilters {
     return (
         useSessionStore((s) => (code ? s.filtersByCode[filtersKey(code)]?.filters : undefined)) ?? {}
     )
+}
+
+// useWaitForReadyFor reads the host's remembered ready-gate pick for one
+// session. It defaults to off, which is also what a newly created session shows.
+export function useWaitForReadyFor(code: string | null): boolean {
+    return useSessionStore((s) => (code ? s.filtersByCode[filtersKey(code)]?.waitForReady : undefined)) ?? false
 }

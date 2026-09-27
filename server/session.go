@@ -37,7 +37,10 @@ type Participant struct {
 	Name      string `json:"name"`
 	IsHost    bool   `json:"isHost"`
 	Connected bool   `json:"connected"`
-	Token     string `json:"-"`
+	// Ready is a guest's answer to the lobby ready gate. It persists across
+	// disconnects and is never cleared by toggling the gate.
+	Ready bool   `json:"ready"`
+	Token string `json:"-"`
 }
 
 // Session is one in-memory "movie night".
@@ -46,13 +49,16 @@ type Session struct {
 	HostID        string
 	RequiredCount int
 	Locked        bool
-	Status        Status
-	Deck          []Movie
-	Participants  map[string]*Participant
-	Votes         map[string]map[string]bool // movieID -> (participantID -> yes?)
-	LastSwipe     map[string]Swipe           // participantID -> last swipe (for undo)
-	WinnerID      string
-	CreatedAt     time.Time
+	// WaitForReady is the host's lobby gate: when set, the host may not
+	// start until every non-host participant is ready.
+	WaitForReady bool
+	Status       Status
+	Deck         []Movie
+	Participants map[string]*Participant
+	Votes        map[string]map[string]bool // movieID -> (participantID -> yes?)
+	LastSwipe    map[string]Swipe           // participantID -> last swipe (for undo)
+	WinnerID     string
+	CreatedAt    time.Time
 
 	// mu guards every mutable field above plus clients. Hold it for the
 	// shortest time possible; never block on a channel send while holding it.

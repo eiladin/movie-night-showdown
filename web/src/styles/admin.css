@@ -31,7 +31,8 @@
     width: 8em;
 }
 
-.unwatched-toggle {
+.unwatched-toggle,
+.ready-toggle {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -42,7 +43,8 @@
     font-size: 16px;
 }
 
-.unwatched-toggle input[type='checkbox'] {
+.unwatched-toggle input[type='checkbox'],
+.ready-toggle input[type='checkbox'] {
     width: 24px;
     height: 24px;
     flex: none;
