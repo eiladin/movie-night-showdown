@@ -122,7 +122,7 @@ screen. You do not need any credentials in a file to begin.
 ```yaml
 services:
   showdown:
-    image: registry.eiladin.xyz/movie-night-showdown:latest
+    image: ghcr.io/eiladin/movie-night-showdown:latest
     ports:
       - "8080:8080"
     environment:
