@@ -7,6 +7,6 @@ require (
 	github.com/gorilla/websocket v1.5.3
 )
 
-require golang.org/x/sync v0.23.0
+require golang.org/x/sync v0.24.0
 
 require github.com/goccy/go-yaml v1.19.2
